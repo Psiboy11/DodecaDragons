@@ -12,78 +12,271 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build Native App, .deb, and .ipa
+      - name: Build Native Swift App with Window Navigation Menu, .deb, and .ipa
         run: |
-          # 1. Prepare App Bundle Layout
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
 
           # Copy web assets
           cp -r index.html style.css 98.css changelog.txt savebank.txt fonts img scripts "$APP_DIR/WebAssets/" 2>/dev/null || true
 
-          # 2. Write minimal native Objective-C WKWebView wrapper
-          cat << 'EOF' > main.m
-          #import <UIKit/UIKit.h>
-          #import <WebKit/WebKit.h>
+          # 1. Write Native Swift Source with Menu Structure, Touch Optimization & FPS removal
+          cat << 'EOF' > main.swift
+          import UIKit
+          import WebKit
 
-          @interface AppDelegate : UIResponder <UIApplicationDelegate, WKUIDelegate>
-          @property (strong, nonatomic) UIWindow *window;
-          @property (strong, nonatomic) WKWebView *webView;
-          @end
+          class AppDelegate: UIResponder, UIApplicationDelegate, WKUIDelegate {
+              var window: UIWindow?
+              var webView: WKWebView?
 
-          @implementation AppDelegate
-          - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-              self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
-              
-              WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
-              config.websiteDataStore = [WKWebsiteDataStore defaultDataStore];
-              
-              self.webView = [[WKWebView alloc] initWithFrame:self.window.bounds configuration:config];
-              self.webView.UIDelegate = self;
-              self.webView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-              
-              UIViewController *rootVC = [[UIViewController alloc] init];
-              rootVC.view = self.webView;
-              self.window.rootViewController = rootVC;
-              [self.window makeKeyAndVisible];
-              
-              NSURL *indexURL = [[NSBundle mainBundle] URLForResource:@"index" withExtension:@"html" subdirectory:@"WebAssets"];
-              if (indexURL) {
-                  [self.webView loadFileURL:indexURL allowingReadAccessToURL:[indexURL URLByDeletingLastPathComponent]];
+              func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+                  let window = UIWindow(frame: UIScreen.main.bounds)
+                  self.window = window
+
+                  let config = WKWebViewConfiguration()
+                  config.websiteDataStore = .default()
+                  config.preferences.javaScriptCanOpenWindowsAutomatically = true
+
+                  // Mobile Enhancements + Window Navigation Menu + FPS Counter Removal
+                  let enhancementsScript = """
+                  (function() {
+                      // 1. Mobile viewport scaling
+                      if (!document.querySelector('meta[name="viewport"]')) {
+                          var meta = document.createElement('meta');
+                          meta.name = 'viewport';
+                          meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
+                          document.head.appendChild(meta);
+                      }
+
+                      // 2. CSS Styles for Mobile Window Menu Bar & FPS Counter Hiding
+                      var style = document.createElement('style');
+                      style.textContent = `
+                          /* Completely hide FPS counter */
+                          #fps, .fps, [id*="fps" i] {
+                              display: none !important;
+                              visibility: hidden !important;
+                              opacity: 0 !important;
+                              pointer-events: none !important;
+                          }
+
+                          /* Touch optimization & body spacing for native header */
+                          body {
+                              -webkit-touch-callout: none !important;
+                              -webkit-user-select: none !important;
+                              user-select: none !important;
+                              touch-action: manipulation;
+                              padding-top: calc(env(safe-area-inset-top) + 48px) !important;
+                              padding-bottom: env(safe-area-inset-bottom) !important;
+                              box-sizing: border-box;
+                          }
+
+                          input, textarea {
+                              -webkit-user-select: auto !important;
+                              user-select: auto !important;
+                          }
+
+                          /* Mobile Menu Header Bar */
+                          #mobile-nav-bar {
+                              position: fixed;
+                              top: 0;
+                              left: 0;
+                              right: 0;
+                              height: calc(env(safe-area-inset-top) + 44px);
+                              padding-top: env(safe-area-inset-top);
+                              background: #c0c0c0;
+                              border-bottom: 2px solid #808080;
+                              display: flex;
+                              align-items: center;
+                              padding-left: 8px;
+                              padding-right: 8px;
+                              z-index: 999999;
+                              box-sizing: border-box;
+                              box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+                              overflow-x: auto;
+                              white-space: nowrap;
+                              -webkit-overflow-scrolling: touch;
+                          }
+
+                          #mobile-nav-bar::-webkit-scrollbar {
+                              display: none;
+                          }
+
+                          .mobile-nav-btn {
+                              display: inline-block;
+                              padding: 4px 10px;
+                              margin-right: 6px;
+                              font-size: 13px;
+                              font-family: 'Pixelated MS Sans Serif', Arial, sans-serif;
+                              cursor: pointer;
+                              white-space: nowrap;
+                              flex-shrink: 0;
+                          }
+
+                          .mobile-nav-btn.active {
+                              font-weight: bold;
+                              background: #000080;
+                              color: #ffffff;
+                          }
+
+                          /* Smooth focus animation when switching windows */
+                          .window {
+                              scroll-margin-top: calc(env(safe-area-inset-top) + 54px);
+                              transition: box-shadow 0.2s ease-in-out;
+                          }
+
+                          .window-focused {
+                              box-shadow: 0 0 12px #ffff00 !important;
+                              z-index: 1000 !important;
+                          }
+                      `;
+                      document.head.appendChild(style);
+
+                      // 3. Inject Dynamic Window Menu Structure
+                      function setupWindowNavMenu() {
+                          if (document.getElementById('mobile-nav-bar')) return;
+
+                          var navBar = document.createElement('div');
+                          navBar.id = 'mobile-nav-bar';
+
+                          // Query all windows on screen
+                          var windows = document.querySelectorAll('.window');
+                          if (!windows || windows.length === 0) {
+                              setTimeout(setupWindowNavMenu, 500);
+                              return;
+                          }
+
+                          windows.forEach(function(win, idx) {
+                              var titleBar = win.querySelector('.title-bar-text') || win.querySelector('.title-bar') || win.querySelector('h1, h2, h3');
+                              var titleText = titleBar ? titleBar.innerText.trim() : ('Window ' + (idx + 1));
+                              if (!titleText) titleText = 'Tab ' + (idx + 1);
+
+                              var btn = document.createElement('button');
+                              btn.className = 'mobile-nav-btn';
+                              btn.innerText = titleText;
+
+                              btn.onclick = function() {
+                                  // Remove active styles
+                                  document.querySelectorAll('.mobile-nav-btn').forEach(b => b.classList.remove('active'));
+                                  document.querySelectorAll('.window').forEach(w => w.classList.remove('window-focused'));
+
+                                  btn.classList.add('active');
+                                  win.classList.add('window-focused');
+
+                                  // Scroll the selected window into view smoothly
+                                  win.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                                  // If the window has display:none, unhide it
+                                  if (win.style.display === 'none') {
+                                      win.style.display = 'block';
+                                  }
+
+                                  setTimeout(function() {
+                                      win.classList.remove('window-focused');
+                                  }, 1500);
+                              };
+
+                              navBar.appendChild(btn);
+                          });
+
+                          document.body.appendChild(navBar);
+
+                          // Double check removing FPS element
+                          var fpsEl = document.getElementById('fps');
+                          if (fpsEl) fpsEl.remove();
+                      }
+
+                      if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                          setTimeout(setupWindowNavMenu, 300);
+                      } else {
+                          window.addEventListener('DOMContentLoaded', setupWindowNavMenu);
+                      }
+                  })();
+                  """
+
+                  let userScript = WKUserScript(
+                      source: enhancementsScript,
+                      injectionTime: .atDocumentEnd,
+                      forMainFrameOnly: true
+                  )
+                  config.userContentController.addUserScript(userScript)
+
+                  let webView = WKWebView(frame: window.bounds, configuration: config)
+                  self.webView = webView
+                  webView.uiDelegate = self
+                  webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                  webView.isOpaque = false
+                  webView.backgroundColor = UIColor(red: 0.13, green: 0.13, blue: 0.13, alpha: 1.0)
+                  webView.scrollView.bounces = true
+                  webView.scrollView.contentInsetAdjustmentBehavior = .never
+
+                  let rootVC = UIViewController()
+                  rootVC.view = webView
+                  window.rootViewController = rootVC
+                  window.makeKeyAndVisible()
+
+                  if let indexURL = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "WebAssets") {
+                      webView.loadFileURL(indexURL, allowingReadAccessTo: indexURL.deletingLastPathComponent())
+                  }
+
+                  return true
               }
-              return YES;
-          }
 
-          // Handle JavaScript prompt() for Save Import
-          - (void)webView:(WKWebView *)webView runJavaScriptTextInputPanelWithPrompt:(NSString *)prompt defaultText:(NSString *)defaultText initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(NSString *))completionHandler {
-              UIAlertController *alert = [UIAlertController alertControllerWithTitle:prompt message:nil preferredStyle:UIAlertControllerStyleAlert];
-              [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = defaultText; }];
-              [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:^(UIAlertAction *a) { completionHandler(nil); }]];
-              [alert addAction:[UIAlertAction actionWithTitle:@"Import" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { completionHandler(alert.textFields.firstObject.text); }]];
-              [self.window.rootViewController presentViewController:alert animated:YES completion:nil];
-          }
-          @end
+              private func topViewController() -> UIViewController? {
+                  var top = window?.rootViewController
+                  while let presented = top?.presentedViewController {
+                      top = presented
+                  }
+                  return top
+              }
 
-          int main(int argc, char *argv[]) {
-              @autoreleasepool {
-                  return UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
+              // Handle JavaScript alert()
+              func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+                  let alert = UIAlertController(title: "DodecaDragons", message: message, preferredStyle: .alert)
+                  alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
+                  topViewController()?.present(alert, animated: true)
+              }
+
+              // Handle JavaScript confirm()
+              func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+                  let alert = UIAlertController(title: "Confirm", message: message, preferredStyle: .alert)
+                  alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
+                  alert.addAction(UIAlertAction(title: "OK", style: .destructive) { _ in completionHandler(true) })
+                  topViewController()?.present(alert, animated: true)
+              }
+
+              // Handle JavaScript prompt() - Save string importing/exporting
+              func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
+                  let alert = UIAlertController(title: prompt, message: nil, preferredStyle: .alert)
+                  alert.addTextField { textField in
+                      textField.text = defaultText
+                      textField.placeholder = "Paste save data..."
+                  }
+                  alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(nil) })
+                  alert.addAction(UIAlertAction(title: "Import", style: .default) { _ in
+                      completionHandler(alert.textFields?.first?.text)
+                  })
+                  topViewController()?.present(alert, animated: true)
               }
           }
+
+          UIApplicationMain(
+              CommandLine.argc,
+              CommandLine.unsafeArgv,
+              nil,
+              NSStringFromClass(AppDelegate.self)
+          )
           EOF
 
-          # 3. Compile directly with clang (Bypasses XcodeGen and xcodebuild entirely)
+          # 2. Compile directly with Swiftc
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-          xcrun --sdk iphoneos clang -arch arm64 \
-            -isysroot "$SDK_PATH" \
-            -miphoneos-version-min=14.0 \
-            -fobjc-arc \
-            -framework UIKit \
-            -framework WebKit \
-            -framework Foundation \
+          xcrun --sdk iphoneos swiftc \
+            -target arm64-apple-ios14.0 \
+            -sdk "$SDK_PATH" \
+            -O \
             -o "$APP_DIR/DodecaDragons" \
-            main.m
+            main.swift
 
-          # 4. Write Info.plist
+          # 3. Write Info.plist
           cat << 'EOF' > "$APP_DIR/Info.plist"
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -117,11 +310,11 @@ jobs:
           </plist>
           EOF
 
-          # 5. Pseudo-sign binary for TrollStore/Jailbreak bypass
+          # 4. Sign binary for TrollStore/Jailbreak bypass
           brew install dpkg ldid
           ldid -S "$APP_DIR/DodecaDragons"
 
-          # 6. Package as .deb
+          # 5. Package as .deb
           mkdir -p deb_root/DEBIAN deb_root/Applications
           cp -r "$APP_DIR" deb_root/Applications/
           cat << 'EOF' > deb_root/DEBIAN/control
@@ -129,7 +322,7 @@ jobs:
           Name: DodecaDragons
           Version: 1.0.0
           Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port
+          Description: DodecaDragons native iOS port with Window Navigation
           Maintainer: Demonin
           Author: Demonin
           Section: Games
@@ -137,7 +330,7 @@ jobs:
           chmod 755 deb_root/DEBIAN
           dpkg-deb -Zxz --build deb_root DodecaDragons_1.0.0_iphoneos-arm64.deb
 
-          # 7. Package as .ipa
+          # 6. Package as .ipa
           mkdir -p Payload
           cp -r "$APP_DIR" Payload/
           zip -r9 DodecaDragons.ipa Payload
