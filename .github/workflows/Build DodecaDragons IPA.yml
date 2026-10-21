@@ -7,95 +7,124 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14 # Pin to macOS 14 to ensure stability
+    runs-on: macos-14
     steps:
-      - name: Checkout DodecaDragons Repo
+      - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Downgrade to Xcode 15.4 (Fixes Exit Code 65)
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app
-
-      - name: Compile App Bundle & Package as .deb
+      - name: Build Native App, .deb, and .ipa
         run: |
-          mkdir -p iOSApp/Sources/WebAssets
-          # Copy the game files into the iOS app folder
-          cp -r index.html style.css 98.css changelog.txt savebank.txt fonts img scripts iOSApp/Sources/WebAssets/ 2>/dev/null || true
+          # 1. Prepare App Bundle Layout
+          APP_DIR="DodecaDragons.app"
+          mkdir -p "$APP_DIR/WebAssets"
 
-          # Create minimal Swift wrapper (Fixed statusBar modifier)
-          cat << 'EOF' > iOSApp/Sources/DodecaDragonsApp.swift
-          import SwiftUI
-          import WebKit
+          # Copy web assets
+          cp -r index.html style.css 98.css changelog.txt savebank.txt fonts img scripts "$APP_DIR/WebAssets/" 2>/dev/null || true
 
-          @main
-          struct DodecaDragonsApp: App {
-              var body: some Scene {
-                  WindowGroup {
-                      GameWebView()
-                          .ignoresSafeArea(.all, edges: .bottom)
-                          .statusBarHidden(true)
-                  }
+          # 2. Write minimal native Objective-C WKWebView wrapper
+          cat << 'EOF' > main.m
+          #import <UIKit/UIKit.h>
+          #import <WebKit/WebKit.h>
+
+          @interface AppDelegate : UIResponder <UIApplicationDelegate, WKUIDelegate>
+          @property (strong, nonatomic) UIWindow *window;
+          @property (strong, nonatomic) WKWebView *webView;
+          @end
+
+          @implementation AppDelegate
+          - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+              self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+              
+              WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
+              config.websiteDataStore = [WKWebsiteDataStore defaultDataStore];
+              
+              self.webView = [[WKWebView alloc] initWithFrame:self.window.bounds configuration:config];
+              self.webView.UIDelegate = self;
+              self.webView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+              
+              UIViewController *rootVC = [[UIViewController alloc] init];
+              rootVC.view = self.webView;
+              self.window.rootViewController = rootVC;
+              [self.window makeKeyAndVisible];
+              
+              NSURL *indexURL = [[NSBundle mainBundle] URLForResource:@"index" withExtension:@"html" subdirectory:@"WebAssets"];
+              if (indexURL) {
+                  [self.webView loadFileURL:indexURL allowingReadAccessToURL:[indexURL URLByDeletingLastPathComponent]];
               }
+              return YES;
           }
 
-          struct GameWebView: UIViewRepresentable {
-              func makeUIView(context: Context) -> WKWebView {
-                  let config = WKWebViewConfiguration()
-                  config.websiteDataStore = .default()
-                  let webView = WKWebView(frame: .zero, configuration: config)
-                  if let url = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "WebAssets") {
-                      webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
-                  }
-                  return webView
+          // Handle JavaScript prompt() for Save Import
+          - (void)webView:(WKWebView *)webView runJavaScriptTextInputPanelWithPrompt:(NSString *)prompt defaultText:(NSString *)defaultText initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(NSString *))completionHandler {
+              UIAlertController *alert = [UIAlertController alertControllerWithTitle:prompt message:nil preferredStyle:UIAlertControllerStyleAlert];
+              [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = defaultText; }];
+              [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:^(UIAlertAction *a) { completionHandler(nil); }]];
+              [alert addAction:[UIAlertAction actionWithTitle:@"Import" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { completionHandler(alert.textFields.firstObject.text); }]];
+              [self.window.rootViewController presentViewController:alert animated:YES completion:nil];
+          }
+          @end
+
+          int main(int argc, char *argv[]) {
+              @autoreleasepool {
+                  return UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
               }
-              func updateUIView(_ uiView: WKWebView, context: Context) {}
           }
           EOF
 
-          # Create the Xcode project generator file
-          cat << 'EOF' > iOSApp/project.yml
-          name: DodecaDragons
-          options:
-            bundleIdPrefix: com.demonin
-            deploymentTarget:
-              iOS: "15.0"
-          targets:
-            DodecaDragons:
-              type: application
-              platform: iOS
-              sources:
-                - path: Sources
-                  excludes: ["WebAssets/**"]
-                - path: Sources/WebAssets
-                  type: folder
-              settings:
-                base:
-                  PRODUCT_BUNDLE_IDENTIFIER: com.demonin.dodecadragons
-                  INFOPLIST_KEY_UIStatusBarHidden: true
-                  INFOPLIST_KEY_UILaunchScreen_Generation: true
+          # 3. Compile directly with clang (Bypasses XcodeGen and xcodebuild entirely)
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          xcrun --sdk iphoneos clang -arch arm64 \
+            -isysroot "$SDK_PATH" \
+            -miphoneos-version-min=14.0 \
+            -fobjc-arc \
+            -framework UIKit \
+            -framework WebKit \
+            -framework Foundation \
+            -o "$APP_DIR/DodecaDragons" \
+            main.m
+
+          # 4. Write Info.plist
+          cat << 'EOF' > "$APP_DIR/Info.plist"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>DodecaDragons</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.demonin.dodecadragons</string>
+              <key>CFBundleName</key>
+              <string>DodecaDragons</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>UIRequiredDeviceCapabilities</key>
+              <array><string>arm64</string></array>
+              <key>UIStatusBarHidden</key>
+              <true/>
+              <key>UIViewControllerBasedStatusBarAppearance</key>
+              <false/>
+              <key>UISupportedInterfaceOrientations</key>
+              <array>
+                  <string>UIInterfaceOrientationPortrait</string>
+                  <string>UIInterfaceOrientationLandscapeLeft</string>
+                  <string>UIInterfaceOrientationLandscapeRight</string>
+              </array>
+          </dict>
+          </plist>
           EOF
 
-          cd iOSApp
-          brew install xcodegen dpkg ldid
-          xcodegen generate
-          
-          # Compile the native iOS binary
-          xcodebuild -project DodecaDragons.xcodeproj \
-            -scheme DodecaDragons \
-            -configuration Release \
-            -sdk iphoneos \
-            -derivedDataPath build \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+          # 5. Pseudo-sign binary for TrollStore/Jailbreak bypass
+          brew install dpkg ldid
+          ldid -S "$APP_DIR/DodecaDragons"
 
-          # Pseudo-sign binary for jailbreak/TrollStore compatibility
-          ldid -S build/Build/Products/Release-iphoneos/DodecaDragons.app/DodecaDragons
-
-          # Build the .DEB structure
-          mkdir -p deb_pkg/DEBIAN deb_pkg/Applications
-          cp -r build/Build/Products/Release-iphoneos/DodecaDragons.app deb_pkg/Applications/
-
-          cat << 'EOF' > deb_pkg/DEBIAN/control
+          # 6. Package as .deb
+          mkdir -p deb_root/DEBIAN deb_root/Applications
+          cp -r "$APP_DIR" deb_root/Applications/
+          cat << 'EOF' > deb_root/DEBIAN/control
           Package: com.demonin.dodecadragons
           Name: DodecaDragons
           Version: 1.0.0
@@ -105,24 +134,18 @@ jobs:
           Author: Demonin
           Section: Games
           EOF
+          chmod 755 deb_root/DEBIAN
+          dpkg-deb -Zxz --build deb_root DodecaDragons_1.0.0_iphoneos-arm64.deb
 
-          chmod 755 deb_pkg/DEBIAN
-          # Generate the .deb file
-          dpkg-deb -Zxz --build deb_pkg DodecaDragons_1.0.0_iphoneos-arm64.deb
-
-      - name: Convert .deb to .ipa
-        run: |
-          cd iOSApp
-          # Extract the .deb and zip it into an .ipa
-          dpkg-deb -x DodecaDragons_1.0.0_iphoneos-arm64.deb extracted_deb
+          # 7. Package as .ipa
           mkdir -p Payload
-          cp -r extracted_deb/Applications/DodecaDragons.app Payload/
+          cp -r "$APP_DIR" Payload/
           zip -r9 DodecaDragons.ipa Payload
 
-      - name: Upload Both .deb and .ipa Artifacts
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: DodecaDragons-Builds
           path: |
-            iOSApp/DodecaDragons_1.0.0_iphoneos-arm64.deb
-            iOSApp/DodecaDragons.ipa
+            DodecaDragons_1.0.0_iphoneos-arm64.deb
+            DodecaDragons.ipa
