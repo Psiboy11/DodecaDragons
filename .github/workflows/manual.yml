@@ -1,0 +1,103 @@
+name: Build DodecaDragons IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main", "master" ]
+
+jobs:
+  build-ios:
+    runs-on: macos-14
+    steps:
+      - name: Checkout Game Code
+        uses: actions/checkout@v4
+
+      - name: Organize Web Assets and Swift Wrapper
+        run: |
+          mkdir -p iOSApp/Sources/WebAssets
+          cp -r index.html style.css 98.css changelog.txt savebank.txt fonts img scripts iOSApp/Sources/WebAssets/ 2>/dev/null || true
+
+          cat << 'EOF' > iOSApp/Sources/DodecaDragonsApp.swift
+          import SwiftUI
+          import WebKit
+
+          @main
+          struct DodecaDragonsApp: App {
+              var body: some Scene {
+                  WindowGroup {
+                      GameWebView()
+                          .ignoresSafeArea(.all, edges: .bottom)
+                          .statusBar(hidden: true)
+                  }
+              }
+          }
+
+          struct GameWebView: UIViewRepresentable {
+              func makeUIView(context: Context) -> WKWebView {
+                  let config = WKWebViewConfiguration()
+                  config.websiteDataStore = .default() // Persists localStorage saves
+                  config.preferences.javaScriptCanOpenWindowsAutomatically = true
+
+                  let webView = WKWebView(frame: .zero, configuration: config)
+                  webView.scrollView.bounces = true
+                  webView.isOpaque = false
+                  webView.backgroundColor = UIColor(red: 0.13, green: 0.13, blue: 0.13, alpha: 1.0)
+
+                  if let indexURL = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "WebAssets") {
+                      webView.loadFileURL(indexURL, allowingReadAccessTo: indexURL.deletingLastPathComponent())
+                  }
+                  return webView
+              }
+
+              func updateUIView(_ uiView: WKWebView, context: Context) {}
+          }
+          EOF
+
+          cat << 'EOF' > iOSApp/project.yml
+          name: DodecaDragons
+          options:
+            bundleIdPrefix: com.demonin
+            deploymentTarget:
+              iOS: "15.0"
+          targets:
+            DodecaDragons:
+              type: application
+              platform: iOS
+              sources:
+                - path: Sources
+                  excludes:
+                    - "WebAssets/**"
+                - path: Sources/WebAssets
+                  type: folder
+              settings:
+                base:
+                  PRODUCT_BUNDLE_IDENTIFIER: com.demonin.dodecadragons
+                  INFOPLIST_KEY_UIStatusBarHidden: true
+                  INFOPLIST_KEY_UILaunchScreen_Generation: true
+                  INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+                  INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+          EOF
+
+      - name: Generate Xcode Project & Compile Unsigned IPA
+        run: |
+          cd iOSApp
+          brew install xcodegen
+          xcodegen generate
+          xcodebuild -project DodecaDragons.xcodeproj \
+            -scheme DodecaDragons \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/DodecaDragons.app Payload/
+          zip -r9 DodecaDragons.ipa Payload
+
+      - name: Upload Compiled .ipa Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DodecaDragons-IPA
+          path: iOSApp/DodecaDragons.ipa
