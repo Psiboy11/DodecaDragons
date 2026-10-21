@@ -1,4 +1,4 @@
-name: Build DodecaDragons IPA
+name: Build DodecaDragons DEB and IPA
 
 on:
   workflow_dispatch:
@@ -6,17 +6,20 @@ on:
     branches: [ "main", "master" ]
 
 jobs:
-  build-ios:
-    runs-on: macos-14
+  build:
+    runs-on: macos-latest
     steps:
-      - name: Checkout Game Code
-        uses: actions/checkout@v4
+      # Updated to v5 to fix the Node 20 deprecation failure
+      - name: Checkout DodecaDragons Repo
+        uses: actions/checkout@v5
 
-      - name: Organize Web Assets and Swift Wrapper
+      - name: Compile App Bundle & Package as .deb
         run: |
           mkdir -p iOSApp/Sources/WebAssets
+          # Copy the game files into the iOS app folder
           cp -r index.html style.css 98.css changelog.txt savebank.txt fonts img scripts iOSApp/Sources/WebAssets/ 2>/dev/null || true
 
+          # Create minimal Swift wrapper
           cat << 'EOF' > iOSApp/Sources/DodecaDragonsApp.swift
           import SwiftUI
           import WebKit
@@ -25,9 +28,7 @@ jobs:
           struct DodecaDragonsApp: App {
               var body: some Scene {
                   WindowGroup {
-                      GameWebView()
-                          .ignoresSafeArea(.all, edges: .bottom)
-                          .statusBar(hidden: true)
+                      GameWebView().ignoresSafeArea(.all, edges: .bottom).statusBar(hidden: true)
                   }
               }
           }
@@ -35,24 +36,18 @@ jobs:
           struct GameWebView: UIViewRepresentable {
               func makeUIView(context: Context) -> WKWebView {
                   let config = WKWebViewConfiguration()
-                  config.websiteDataStore = .default() // Persists localStorage saves
-                  config.preferences.javaScriptCanOpenWindowsAutomatically = true
-
+                  config.websiteDataStore = .default()
                   let webView = WKWebView(frame: .zero, configuration: config)
-                  webView.scrollView.bounces = true
-                  webView.isOpaque = false
-                  webView.backgroundColor = UIColor(red: 0.13, green: 0.13, blue: 0.13, alpha: 1.0)
-
-                  if let indexURL = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "WebAssets") {
-                      webView.loadFileURL(indexURL, allowingReadAccessTo: indexURL.deletingLastPathComponent())
+                  if let url = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "WebAssets") {
+                      webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
                   }
                   return webView
               }
-
               func updateUIView(_ uiView: WKWebView, context: Context) {}
           }
           EOF
 
+          # Create the Xcode project generator file
           cat << 'EOF' > iOSApp/project.yml
           name: DodecaDragons
           options:
@@ -65,8 +60,7 @@ jobs:
               platform: iOS
               sources:
                 - path: Sources
-                  excludes:
-                    - "WebAssets/**"
+                  excludes: ["WebAssets/**"]
                 - path: Sources/WebAssets
                   type: folder
               settings:
@@ -74,30 +68,50 @@ jobs:
                   PRODUCT_BUNDLE_IDENTIFIER: com.demonin.dodecadragons
                   INFOPLIST_KEY_UIStatusBarHidden: true
                   INFOPLIST_KEY_UILaunchScreen_Generation: true
-                  INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
-                  INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
           EOF
 
-      - name: Generate Xcode Project & Compile Unsigned IPA
+          cd iOSApp
+          brew install xcodegen dpkg ldid
+          xcodegen generate
+          
+          # Compile the native iOS binary
+          xcodebuild -project DodecaDragons.xcodeproj -scheme DodecaDragons -configuration Release -sdk iphoneos -derivedDataPath build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+
+          # Pseudo-sign binary for jailbreak/TrollStore compatibility
+          ldid -S build/Build/Products/Release-iphoneos/DodecaDragons.app/DodecaDragons
+
+          # Build the .DEB structure
+          mkdir -p deb_pkg/DEBIAN deb_pkg/Applications
+          cp -r build/Build/Products/Release-iphoneos/DodecaDragons.app deb_pkg/Applications/
+
+          cat << 'EOF' > deb_pkg/DEBIAN/control
+          Package: com.demonin.dodecadragons
+          Name: DodecaDragons
+          Version: 1.0.0
+          Architecture: iphoneos-arm64
+          Description: DodecaDragons native iOS port
+          Maintainer: Demonin
+          Author: Demonin
+          Section: Games
+          EOF
+
+          chmod 755 deb_pkg/DEBIAN
+          # Generate the .deb file
+          dpkg-deb -Zxz --build deb_pkg DodecaDragons_1.0.0_iphoneos-arm64.deb
+
+      - name: Convert .deb to .ipa
         run: |
           cd iOSApp
-          brew install xcodegen
-          xcodegen generate
-          xcodebuild -project DodecaDragons.xcodeproj \
-            -scheme DodecaDragons \
-            -configuration Release \
-            -sdk iphoneos \
-            -derivedDataPath build \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
-
+          # Extract the .deb and zip it into an .ipa
+          dpkg-deb -x DodecaDragons_1.0.0_iphoneos-arm64.deb extracted_deb
           mkdir -p Payload
-          cp -r build/Build/Products/Release-iphoneos/DodecaDragons.app Payload/
+          cp -r extracted_deb/Applications/DodecaDragons.app Payload/
           zip -r9 DodecaDragons.ipa Payload
 
-      - name: Upload Compiled .ipa Artifact
+      - name: Upload Both .deb and .ipa Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: DodecaDragons-IPA
-          path: iOSApp/DodecaDragons.ipa
+          name: DodecaDragons-Builds
+          path: |
+            iOSApp/DodecaDragons_1.0.0_iphoneos-arm64.deb
+            iOSApp/DodecaDragons.ipa
