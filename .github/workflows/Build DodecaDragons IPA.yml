@@ -9,7 +9,6 @@ jobs:
   build:
     runs-on: macos-latest
     steps:
-      # Updated to v5 to fix the Node 20 deprecation failure
       - name: Checkout DodecaDragons Repo
         uses: actions/checkout@v5
 
@@ -47,7 +46,7 @@ jobs:
           }
           EOF
 
-          # Create the Xcode project generator file
+          # Create the Xcode project generator file with STRICT signing bypass
           cat << 'EOF' > iOSApp/project.yml
           name: DodecaDragons
           options:
@@ -68,14 +67,27 @@ jobs:
                   PRODUCT_BUNDLE_IDENTIFIER: com.demonin.dodecadragons
                   INFOPLIST_KEY_UIStatusBarHidden: true
                   INFOPLIST_KEY_UILaunchScreen_Generation: true
+                  CODE_SIGNING_REQUIRED: "NO"
+                  CODE_SIGNING_ALLOWED: "NO"
+                  CODE_SIGN_IDENTITY: ""
+                  ENTITLEMENTS_REQUIRED: "NO"
           EOF
 
           cd iOSApp
           brew install xcodegen dpkg ldid
           xcodegen generate
           
-          # Compile the native iOS binary
-          xcodebuild -project DodecaDragons.xcodeproj -scheme DodecaDragons -configuration Release -sdk iphoneos -derivedDataPath build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+          # Compile the native iOS binary with explicit generic destination
+          xcodebuild -project DodecaDragons.xcodeproj \
+            -scheme DodecaDragons \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ENTITLEMENTS_REQUIRED=NO
 
           # Pseudo-sign binary for jailbreak/TrollStore compatibility
           ldid -S build/Build/Products/Release-iphoneos/DodecaDragons.app/DodecaDragons
