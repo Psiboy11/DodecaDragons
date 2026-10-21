@@ -7,10 +7,13 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-14 # Pin to macOS 14 to ensure stability
     steps:
       - name: Checkout DodecaDragons Repo
         uses: actions/checkout@v5
+
+      - name: Downgrade to Xcode 15.4 (Fixes Exit Code 65)
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
 
       - name: Compile App Bundle & Package as .deb
         run: |
@@ -18,7 +21,7 @@ jobs:
           # Copy the game files into the iOS app folder
           cp -r index.html style.css 98.css changelog.txt savebank.txt fonts img scripts iOSApp/Sources/WebAssets/ 2>/dev/null || true
 
-          # Create minimal Swift wrapper
+          # Create minimal Swift wrapper (Fixed statusBar modifier)
           cat << 'EOF' > iOSApp/Sources/DodecaDragonsApp.swift
           import SwiftUI
           import WebKit
@@ -27,7 +30,9 @@ jobs:
           struct DodecaDragonsApp: App {
               var body: some Scene {
                   WindowGroup {
-                      GameWebView().ignoresSafeArea(.all, edges: .bottom).statusBar(hidden: true)
+                      GameWebView()
+                          .ignoresSafeArea(.all, edges: .bottom)
+                          .statusBarHidden(true)
                   }
               }
           }
@@ -46,7 +51,7 @@ jobs:
           }
           EOF
 
-          # Create the Xcode project generator file with STRICT signing bypass
+          # Create the Xcode project generator file
           cat << 'EOF' > iOSApp/project.yml
           name: DodecaDragons
           options:
@@ -67,27 +72,21 @@ jobs:
                   PRODUCT_BUNDLE_IDENTIFIER: com.demonin.dodecadragons
                   INFOPLIST_KEY_UIStatusBarHidden: true
                   INFOPLIST_KEY_UILaunchScreen_Generation: true
-                  CODE_SIGNING_REQUIRED: "NO"
-                  CODE_SIGNING_ALLOWED: "NO"
-                  CODE_SIGN_IDENTITY: ""
-                  ENTITLEMENTS_REQUIRED: "NO"
           EOF
 
           cd iOSApp
           brew install xcodegen dpkg ldid
           xcodegen generate
           
-          # Compile the native iOS binary with explicit generic destination
+          # Compile the native iOS binary
           xcodebuild -project DodecaDragons.xcodeproj \
             -scheme DodecaDragons \
             -configuration Release \
             -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
             -derivedDataPath build \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            ENTITLEMENTS_REQUIRED=NO
+            CODE_SIGNING_ALLOWED=NO
 
           # Pseudo-sign binary for jailbreak/TrollStore compatibility
           ldid -S build/Build/Products/Release-iphoneos/DodecaDragons.app/DodecaDragons
