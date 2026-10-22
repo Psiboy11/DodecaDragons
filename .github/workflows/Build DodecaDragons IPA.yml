@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build Notch-Proof App with Fixed HUD (Original Window Sizing)
+      - name: Build Notch-Proof App with Fixed HUD & Upper-Right Home
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -20,13 +20,13 @@ jobs:
           # Copy web assets
           cp -r index.html style.css 98.css changelog.txt savebank.txt fonts img scripts "$APP_DIR/WebAssets/" 2>/dev/null || true
 
-          # Patch scripts for 3,000,000 starting gold & 2,000 fire
+          # Patch scripts directly for 300,000 starting gold & 3,000 fire
           for f in "$APP_DIR/WebAssets/scripts/"*.js; do
             if [ -f "$f" ]; then
-              sed -i '' 's/gold: new ExpantaNum(0)/gold: new ExpantaNum(3000000)/g' "$f" 2>/dev/null || true
-              sed -i '' 's/gold:new ExpantaNum(0)/gold:new ExpantaNum(3000000)/g' "$f" 2>/dev/null || true
-              sed -i '' 's/fire: new ExpantaNum(0)/fire: new ExpantaNum(2000)/g' "$f" 2>/dev/null || true
-              sed -i '' 's/fire:new ExpantaNum(0)/fire:new ExpantaNum(2000)/g' "$f" 2>/dev/null || true
+              sed -i '' 's/gold: new ExpantaNum(0)/gold: new ExpantaNum(300000)/g' "$f" 2>/dev/null || true
+              sed -i '' 's/gold:new ExpantaNum(0)/gold:new ExpantaNum(300000)/g' "$f" 2>/dev/null || true
+              sed -i '' 's/fire: new ExpantaNum(0)/fire: new ExpantaNum(3000)/g' "$f" 2>/dev/null || true
+              sed -i '' 's/fire:new ExpantaNum(0)/fire:new ExpantaNum(3000)/g' "$f" 2>/dev/null || true
             fi
           done
 
@@ -67,13 +67,11 @@ jobs:
 
                       var style = document.createElement('style');
                       style.textContent = `
-                          /* Hardcode the HTML background to black to hide the notch area */
                           html {
                               background-color: #000 !important;
                               overflow: hidden !important;
                           }
 
-                          /* Confine the actual body to STRICTLY inside the safe area (No notch clipping ever) */
                           body {
                               position: fixed !important;
                               top: env(safe-area-inset-top) !important;
@@ -87,6 +85,7 @@ jobs:
                               overflow: hidden !important;
                               background-color: #1a1a1a !important; 
                               -webkit-user-select: none !important;
+                              user-select: none !important;
                               touch-action: none !important;
                           }
 
@@ -99,23 +98,34 @@ jobs:
                               pointer-events: none !important;
                           }
 
-                          /* Move smaller Home button to the UPPER RIGHT */
-                          #home, img#home, [onclick*="posSet(0,0)"] {
+                          /* Hide original in-game home elements to prevent duplicate ghost icons */
+                          #home:not(#ios-fixed-home-btn), img#home:not(#ios-fixed-home-btn) {
+                              display: none !important;
+                          }
+
+                          /* Fixed Upper-Right Home Button */
+                          #ios-fixed-home-btn {
                               position: fixed !important;
                               top: 8px !important;
                               right: 8px !important;
-                              left: auto !important; 
-                              width: 26px !important;
-                              height: 26px !important;
-                              min-width: 26px !important;
-                              min-height: 26px !important;
+                              width: 30px !important;
+                              height: 30px !important;
+                              background: #c0c0c0 url('img/home.png') no-repeat center center !important;
+                              background-size: 18px 18px !important;
+                              border: 2px outset #ffffff !important;
+                              box-shadow: 2px 2px 5px rgba(0,0,0,0.5) !important;
                               z-index: 2147483647 !important;
-                              display: block !important;
-                              opacity: 0.85 !important;
-                              transform: none !important;
+                              display: flex !important;
+                              align-items: center !important;
+                              justify-content: center !important;
+                              cursor: pointer !important;
+                              touch-action: manipulation !important;
                           }
 
-                          /* Restored Original Window Sizing */
+                          #ios-fixed-home-btn:active {
+                              border: 2px inset #ffffff !important;
+                          }
+
                           .window {
                               zoom: 0.88;
                           }
@@ -124,7 +134,7 @@ jobs:
                               touch-action: pan-y !important;
                           }
 
-                          /* Fixed Gold Box HUD styling */
+                          /* Fixed Gold Box HUD styling in UPPER LEFT */
                           #custom-ios-gold {
                               position: fixed !important;
                               top: 8px !important;
@@ -149,253 +159,20 @@ jobs:
                       goldBox.innerText = 'Gold: 0';
                       document.body.appendChild(goldBox);
 
-                      // Background loop to update Gold Counter continuously
+                      // Inject Dedicated Upper-Right Home Button
+                      var homeBtn = document.createElement('div');
+                      homeBtn.id = 'ios-fixed-home-btn';
+                      homeBtn.title = 'Home (0,0)';
+                      homeBtn.onclick = function(e) {
+                          e.stopPropagation();
+                          if (typeof posSet === 'function') {
+                              posSet(0, 0);
+                          }
+                          if (typeof xPos !== 'undefined') xPos = 0;
+                          if (typeof yPos !== 'undefined') yPos = 0;
+                      };
+                      document.body.appendChild(homeBtn);
+
+                      // Loop to update Gold Counter continuously
                       setInterval(function() {
-                          if (typeof game !== 'undefined' && game.gold && typeof format === 'function') {
-                              goldBox.innerText = 'Gold: ' + format(game.gold);
-                          }
-                      }, 100);
-
-                      // Starting Resources
-                      function applyStartingResources(force) {
-                          if (typeof game === 'undefined' || typeof ExpantaNum === 'undefined') {
-                              setTimeout(function() { applyStartingResources(force); }, 100);
-                              return;
-                          }
-                          var alreadyInitialized = localStorage.getItem('ios_starter_boost_applied');
-                          if (force || !alreadyInitialized) {
-                              if (game.gold && game.gold.lt(3000000)) game.gold = new ExpantaNum(3000000);
-                              if (game.fire && game.fire.lt(2000)) game.fire = new ExpantaNum(2000);
-                              if (typeof game.unlocks !== 'undefined' && game.unlocks < 1) game.unlocks = 1;
-                              localStorage.setItem('ios_starter_boost_applied', 'true');
-                              if (typeof save === 'function') save();
-                          }
-                      }
-
-                      // Camera Controller (Pinch to zoom + 1-finger pan)
-                      var currentScale = 1.0;
-                      var startDist = 0, startScale = 1.0;
-                      var isPanning = false, lastX = 0, lastY = 0, accumDX = 0, accumDY = 0;
-
-                      function applyWindowScale(scale) {
-                          currentScale = Math.min(Math.max(scale, 0.45), 2.2);
-                          var zoomVal = (0.88 * currentScale).toFixed(3);
-                          var dynStyle = document.getElementById('dynamic-window-zoom');
-                          if (!dynStyle) {
-                              dynStyle = document.createElement('style');
-                              dynStyle.id = 'dynamic-window-zoom';
-                              document.head.appendChild(dynStyle);
-                          }
-                          dynStyle.textContent = '.window { zoom: ' + zoomVal + ' !important; }';
-                      }
-
-                      function getTouchDist(t1, t2) {
-                          return Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-                      }
-
-                      document.addEventListener('touchstart', function(e) {
-                          if (e.touches.length === 2) {
-                              isPanning = false;
-                              startDist = getTouchDist(e.touches[0], e.touches[1]);
-                              startScale = currentScale;
-                          } else if (e.touches.length === 1) {
-                              var tag = e.target.tagName ? e.target.tagName.toLowerCase() : '';
-                              if (tag === 'button' || tag === 'input' || tag === 'a' || tag === 'select' || e.target.onclick || e.target.closest('button')) {
-                                  isPanning = false;
-                                  return;
-                              }
-                              isPanning = true;
-                              lastX = e.touches[0].clientX;
-                              lastY = e.touches[0].clientY;
-                              accumDX = 0;
-                              accumDY = 0;
-                          }
-                      }, { passive: true });
-
-                      document.addEventListener('touchmove', function(e) {
-                          if (e.touches.length === 2 && startDist > 0) {
-                              applyWindowScale(startScale * (getTouchDist(e.touches[0], e.touches[1]) / startDist));
-                          } else if (isPanning && e.touches.length === 1) {
-                              var dx = e.touches[0].clientX - lastX;
-                              var dy = e.touches[0].clientY - lastY;
-                              lastX = e.touches[0].clientX;
-                              lastY = e.touches[0].clientY;
-
-                              if (typeof xPos !== 'undefined' && typeof yPos !== 'undefined') {
-                                  xPos -= dx / currentScale;
-                                  yPos -= dy / currentScale;
-                              } else if (typeof posMove === 'function') {
-                                  accumDX += dx;
-                                  accumDY += dy;
-                                  var threshold = 110;
-                                  if (accumDX > threshold) { posMove(3); accumDX = 0; }
-                                  else if (accumDX < -threshold) { posMove(4); accumDX = 0; }
-                                  if (accumDY > threshold) { posMove(1); accumDY = 0; }
-                                  else if (accumDY < -threshold) { posMove(2); accumDY = 0; }
-                              }
-                          }
-                      }, { passive: true });
-
-                      document.addEventListener('touchend', function(e) {
-                          if (e.touches.length < 2) startDist = 0;
-                          if (e.touches.length === 0) isPanning = false;
-                      }, { passive: true });
-
-                      window.addEventListener('load', function() {
-                          applyStartingResources(false);
-                          if (typeof window.reset === 'function') {
-                              var origReset = window.reset;
-                              window.reset = function() {
-                                  origReset.apply(this, arguments);
-                                  applyStartingResources(true);
-                              };
-                          }
-                      });
-                  })();
-                  """
-
-                  let userScript = WKUserScript(source: enhancementsScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
-                  config.userContentController.addUserScript(userScript)
-
-                  let webView = WKWebView(frame: screenBounds, configuration: config)
-                  self.webView = webView
-                  webView.uiDelegate = self
-                  webView.scrollView.delegate = self
-                  webView.contentScaleFactor = UIScreen.main.scale
-                  webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-                  webView.isOpaque = false
-                  webView.backgroundColor = .black // Shows through safe areas
-
-                  // Disable scroll physics (handled entirely by custom panning)
-                  webView.scrollView.contentInsetAdjustmentBehavior = .never
-                  webView.scrollView.insetsLayoutMarginsFromSafeArea = false
-                  webView.insetsLayoutMarginsFromSafeArea = false
-                  webView.scrollView.isScrollEnabled = false
-                  webView.scrollView.bounces = false
-                  webView.scrollView.bouncesZoom = false
-                  webView.scrollView.minimumZoomScale = 1.0
-                  webView.scrollView.maximumZoomScale = 1.0
-
-                  let rootVC = FullscreenViewController()
-                  rootVC.view = webView
-                  window.rootViewController = rootVC
-                  window.makeKeyAndVisible()
-
-                  if let indexURL = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "WebAssets") {
-                      webView.loadFileURL(indexURL, allowingReadAccessTo: indexURL.deletingLastPathComponent())
-                  }
-
-                  return true
-              }
-
-              func viewForZooming(in scrollView: UIScrollView) -> UIView? { return nil }
-
-              private func topViewController() -> UIViewController? {
-                  var top = window?.rootViewController
-                  while let presented = top?.presentedViewController { top = presented }
-                  return top
-              }
-
-              func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
-                  let alert = UIAlertController(title: "DodecaDragons", message: message, preferredStyle: .alert)
-                  alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
-                  topViewController()?.present(alert, animated: true)
-              }
-
-              func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
-                  let alert = UIAlertController(title: "Confirm", message: message, preferredStyle: .alert)
-                  alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
-                  alert.addAction(UIAlertAction(title: "OK", style: .destructive) { _ in completionHandler(true) })
-                  topViewController()?.present(alert, animated: true)
-              }
-
-              func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
-                  let alert = UIAlertController(title: prompt, message: nil, preferredStyle: .alert)
-                  alert.addTextField { tf in tf.text = defaultText; tf.placeholder = "Paste save data..." }
-                  alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(nil) })
-                  alert.addAction(UIAlertAction(title: "Import", style: .default) { _ in completionHandler(alert.textFields?.first?.text) })
-                  topViewController()?.present(alert, animated: true)
-              }
-          }
-
-          UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil, NSStringFromClass(AppDelegate.self))
-          EOF
-
-          # 2. Compile directly with Swiftc
-          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-          xcrun --sdk iphoneos swiftc \
-            -target arm64-apple-ios15.0 \
-            -sdk "$SDK_PATH" \
-            -O \
-            -o "$APP_DIR/DodecaDragons" \
-            main.swift
-
-          # 3. Write Info.plist
-          cat << 'EOF' > "$APP_DIR/Info.plist"
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleExecutable</key>
-              <string>DodecaDragons</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.demonin.dodecadragons</string>
-              <key>CFBundleName</key>
-              <string>DodecaDragons</string>
-              <key>CFBundlePackageType</key>
-              <string>APPL</string>
-              <key>CFBundleShortVersionString</key>
-              <string>1.0.6</string>
-              <key>CFBundleVersion</key>
-              <string>7</string>
-              <key>LSRequiresIPhoneOS</key>
-              <true/>
-              <key>UIDeviceFamily</key>
-              <array><integer>1</integer><integer>2</integer></array>
-              <key>UILaunchScreen</key><dict/>
-              <key>UIRequiredDeviceCapabilities</key><array><string>arm64</string></array>
-              <key>UIRequiresFullScreen</key><true/>
-              <key>UIStatusBarHidden</key><true/>
-              <key>UIViewControllerBasedStatusBarAppearance</key><true/>
-              <key>UISupportedInterfaceOrientations</key>
-              <array>
-                  <string>UIInterfaceOrientationPortrait</string>
-                  <string>UIInterfaceOrientationLandscapeLeft</string>
-                  <string>UIInterfaceOrientationLandscapeRight</string>
-              </array>
-          </dict>
-          </plist>
-          EOF
-
-          # 4. Sign binary
-          brew install dpkg ldid
-          ldid -S "$APP_DIR/DodecaDragons"
-
-          # 5. Package as .deb
-          mkdir -p deb_root/DEBIAN deb_root/Applications
-          cp -r "$APP_DIR" deb_root/Applications/
-          cat << 'EOF' > deb_root/DEBIAN/control
-          Package: com.demonin.dodecadragons
-          Name: DodecaDragons
-          Version: 1.0.6
-          Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port - Restored Original Window Sizing
-          Maintainer: Demonin
-          Author: Demonin
-          Section: Games
-          EOF
-          chmod 755 deb_root/DEBIAN
-          dpkg-deb -Zxz --build deb_root DodecaDragons_1.0.6_iphoneos-arm64.deb
-
-          # 6. Package as .ipa
-          mkdir -p Payload
-          cp -r "$APP_DIR" Payload/
-          zip -r9 DodecaDragons.ipa Payload
-
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: DodecaDragons-Builds
-          path: |
-            DodecaDragons_1.0.6_iphoneos-arm64.deb
-            DodecaDragons.ipa
+                          if (typeof
