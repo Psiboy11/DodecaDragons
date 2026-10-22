@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build Fullscreen App with Touch Panning & Starting Boost
+      - name: Build Notch-Aware Fullscreen App
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -20,7 +20,7 @@ jobs:
           # Copy web assets
           cp -r index.html style.css 98.css changelog.txt savebank.txt fonts img scripts "$APP_DIR/WebAssets/" 2>/dev/null || true
 
-          # Patch scripts/main.js or scripts/game.js directly if present so default reset() also has 3M gold & 2000 fire
+          # Patch scripts directly for 3,000,000 starting gold & 2,000 fire
           for f in "$APP_DIR/WebAssets/scripts/"*.js; do
             if [ -f "$f" ]; then
               sed -i '' 's/gold: new ExpantaNum(0)/gold: new ExpantaNum(3000000)/g' "$f" 2>/dev/null || true
@@ -41,7 +41,7 @@ jobs:
               override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }
           }
 
-          class AppDelegate: UIResponder, UIApplicationDelegate, WKUIDelegate {
+          class AppDelegate: UIResponder, UIApplicationDelegate, WKUIDelegate, UIScrollViewDelegate {
               var window: UIWindow?
               var webView: WKWebView?
 
@@ -57,18 +57,41 @@ jobs:
 
                   let enhancementsScript = """
                   (function() {
-                      // 1. High-DPI Safari Desktop Canvas (1280px wide, edge-to-edge, full pinch-to-zoom)
+                      // 1. Lock viewport with cover mode so safe-area-insets map to the Dynamic Island / Notch
                       var meta = document.querySelector('meta[name="viewport"]');
                       if (!meta) {
                           meta = document.createElement('meta');
                           meta.name = 'viewport';
                           document.head.appendChild(meta);
                       }
-                      meta.content = 'width=1280, minimum-scale=0.2, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover';
+                      meta.content = 'width=1280, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
 
-                      // 2. Inject CSS targeting exact DodecaDragons IDs
+                      // 2. Inject CSS for notch padding and compact top-left Home button
                       var style = document.createElement('style');
                       style.textContent = `
+                          /* Fixed root canvas prevents bouncing or resize flashes */
+                          html, body {
+                              position: fixed !important;
+                              top: 0 !important;
+                              left: 0 !important;
+                              width: 100vw !important;
+                              height: 100vh !important;
+                              margin: 0 !important;
+                              padding: 0 !important;
+                              overflow: hidden !important;
+                              -webkit-text-size-adjust: 100% !important;
+                              -webkit-user-select: none !important;
+                              user-select: none !important;
+                              touch-action: none !important;
+                          }
+
+                          /* Notch awareness: buffer primary interactive overlay from Island / Notch */
+                          :root {
+                              --notch-top: env(safe-area-inset-top, 0px);
+                              --notch-left: env(safe-area-inset-left, 0px);
+                              --notch-right: env(safe-area-inset-right, 0px);
+                          }
+
                           /* Remove FPS Counter */
                           #fps, .fps, [id*="fps" i] {
                               display: none !important;
@@ -85,36 +108,35 @@ jobs:
                               pointer-events: none !important;
                           }
 
-                          /* Pin #home icon to top-left corner and make it smaller */
+                          /* Notch-aware smaller Home button strictly locked to the upper-left */
                           #home, img#home, [onclick*="posSet(0,0)"] {
                               position: fixed !important;
-                              top: max(12px, env(safe-area-inset-top)) !important;
-                              left: max(12px, env(safe-area-inset-left)) !important;
-                              width: 32px !important;
-                              height: 32px !important;
-                              z-index: 999999 !important;
+                              top: max(8px, env(safe-area-inset-top)) !important;
+                              left: max(8px, env(safe-area-inset-left)) !important;
+                              width: 26px !important;
+                              height: 26px !important;
+                              min-width: 26px !important;
+                              min-height: 26px !important;
+                              max-width: 26px !important;
+                              max-height: 26px !important;
+                              z-index: 2147483647 !important;
                               margin: 0 !important;
                               padding: 0 !important;
                               display: block !important;
                               visibility: visible !important;
-                              opacity: 0.9 !important;
+                              opacity: 0.85 !important;
+                              transform: none !important;
+                              zoom: 1 !important;
+                              filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5)) !important;
                           }
 
-                          /* Make the game windows slightly smaller */
+                          /* Windows rendered cleanly with consistent scaling */
                           .window {
-                              transform: scale(0.88);
-                              transform-origin: top left;
+                              zoom: 0.88;
                           }
 
-                          /* High-DPI Fullscreen Canvas */
-                          body, html {
-                              margin: 0 !important;
-                              padding: 0 !important;
-                              width: 100% !important;
-                              height: 100% !important;
-                              -webkit-text-size-adjust: 100% !important;
-                              -webkit-user-select: none !important;
-                              user-select: none !important;
+                          .window-body, textarea, select {
+                              touch-action: pan-y !important;
                           }
                       `;
                       document.head.appendChild(style);
@@ -133,7 +155,6 @@ jobs:
                               if (game.fire && game.fire.lt(2000)) {
                                   game.fire = new ExpantaNum(2000);
                               }
-                              // Ensure Fire tab/upgrades are visible if starting with Fire
                               if (typeof game.unlocks !== 'undefined' && game.unlocks < 1) {
                                   game.unlocks = 1;
                               }
@@ -142,7 +163,86 @@ jobs:
                           }
                       }
 
-                      // Hook into hard reset() so resetting the game also gives 3M gold & 2,000 fire
+                      // 4. Pinch-to-scale and single-finger camera pan
+                      var currentScale = 1.0;
+                      var startDist = 0;
+                      var startScale = 1.0;
+                      var isPanning = false;
+                      var lastX = 0, lastY = 0;
+                      var accumDX = 0, accumDY = 0;
+
+                      function applyWindowScale(scale) {
+                          currentScale = Math.min(Math.max(scale, 0.45), 2.2);
+                          var zoomVal = (0.88 * currentScale).toFixed(3);
+                          var dynStyle = document.getElementById('dynamic-window-zoom');
+                          if (!dynStyle) {
+                              dynStyle = document.createElement('style');
+                              dynStyle.id = 'dynamic-window-zoom';
+                              document.head.appendChild(dynStyle);
+                          }
+                          dynStyle.textContent = '.window { zoom: ' + zoomVal + ' !important; }';
+                      }
+
+                      function getTouchDist(t1, t2) {
+                          var dx = t1.clientX - t2.clientX;
+                          var dy = t1.clientY - t2.clientY;
+                          return Math.hypot(dx, dy);
+                      }
+
+                      document.addEventListener('touchstart', function(e) {
+                          if (e.touches.length === 2) {
+                              isPanning = false;
+                              startDist = getTouchDist(e.touches[0], e.touches[1]);
+                              startScale = currentScale;
+                              return;
+                          }
+                          if (e.touches.length === 1) {
+                              var tag = e.target.tagName ? e.target.tagName.toLowerCase() : '';
+                              if (tag === 'button' || tag === 'input' || tag === 'a' || tag === 'select' || e.target.onclick || e.target.closest('button')) {
+                                  isPanning = false;
+                                  return;
+                              }
+                              isPanning = true;
+                              lastX = e.touches[0].clientX;
+                              lastY = e.touches[0].clientY;
+                              accumDX = 0;
+                              accumDY = 0;
+                          }
+                      }, { passive: true });
+
+                      document.addEventListener('touchmove', function(e) {
+                          if (e.touches.length === 2 && startDist > 0) {
+                              var newDist = getTouchDist(e.touches[0], e.touches[1]);
+                              var ratio = newDist / startDist;
+                              applyWindowScale(startScale * ratio);
+                              return;
+                          }
+                          if (isPanning && e.touches.length === 1) {
+                              var dx = e.touches[0].clientX - lastX;
+                              var dy = e.touches[0].clientY - lastY;
+                              lastX = e.touches[0].clientX;
+                              lastY = e.touches[0].clientY;
+
+                              if (typeof xPos !== 'undefined' && typeof yPos !== 'undefined') {
+                                  xPos -= dx / currentScale;
+                                  yPos -= dy / currentScale;
+                              } else if (typeof posMove === 'function') {
+                                  accumDX += dx;
+                                  accumDY += dy;
+                                  var threshold = 110;
+                                  if (accumDX > threshold) { posMove(3); accumDX = 0; }
+                                  else if (accumDX < -threshold) { posMove(4); accumDX = 0; }
+                                  if (accumDY > threshold) { posMove(1); accumDY = 0; }
+                                  else if (accumDY < -threshold) { posMove(2); accumDY = 0; }
+                              }
+                          }
+                      }, { passive: true });
+
+                      document.addEventListener('touchend', function(e) {
+                          if (e.touches.length < 2) startDist = 0;
+                          if (e.touches.length === 0) isPanning = false;
+                      }, { passive: true });
+
                       window.addEventListener('load', function() {
                           applyStartingResources(false);
                           if (typeof window.reset === 'function') {
@@ -153,54 +253,6 @@ jobs:
                               };
                           }
                       });
-
-                      // 4. One-Finger Touch-Drag Map Panning
-                      var isPanning = false;
-                      var startX = 0, startY = 0;
-                      var accumDX = 0, accumDY = 0;
-
-                      document.addEventListener('touchstart', function(e) {
-                          if (e.touches.length !== 1) {
-                              isPanning = false;
-                              return;
-                          }
-                          var tag = e.target.tagName ? e.target.tagName.toLowerCase() : '';
-                          if (tag === 'button' || tag === 'input' || tag === 'a' || tag === 'select' || e.target.onclick || e.target.closest('button')) {
-                              isPanning = false;
-                              return;
-                          }
-                          isPanning = true;
-                          startX = e.touches[0].clientX;
-                          startY = e.touches[0].clientY;
-                          accumDX = 0;
-                          accumDY = 0;
-                      }, { passive: true });
-
-                      document.addEventListener('touchmove', function(e) {
-                          if (!isPanning || e.touches.length !== 1) return;
-                          var dx = e.touches[0].clientX - startX;
-                          var dy = e.touches[0].clientY - startY;
-                          startX = e.touches[0].clientX;
-                          startY = e.touches[0].clientY;
-
-                          // Scroll native viewport smoothly
-                          window.scrollBy(-dx, -dy);
-
-                          // Also pan DodecaDragons internal map coordinates if posMove / xPos / yPos exist
-                          accumDX += dx;
-                          accumDY += dy;
-                          var stepThreshold = 140; // Finger drag distance to trigger a grid shift
-                          if (typeof posMove === 'function') {
-                              if (accumDX > stepThreshold) { posMove(3); accumDX = 0; }
-                              else if (accumDX < -stepThreshold) { posMove(4); accumDX = 0; }
-                              if (accumDY > stepThreshold) { posMove(1); accumDY = 0; }
-                              else if (accumDY < -stepThreshold) { posMove(2); accumDY = 0; }
-                          }
-                      }, { passive: true });
-
-                      document.addEventListener('touchend', function() {
-                          isPanning = false;
-                      }, { passive: true });
                   })();
                   """
 
@@ -214,17 +266,21 @@ jobs:
                   let webView = WKWebView(frame: screenBounds, configuration: config)
                   self.webView = webView
                   webView.uiDelegate = self
+                  webView.scrollView.delegate = self
                   webView.contentScaleFactor = UIScreen.main.scale
                   webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
                   webView.isOpaque = false
                   webView.backgroundColor = UIColor(red: 0.13, green: 0.13, blue: 0.13, alpha: 1.0)
 
-                  // Bypass Safe Area insets so WebView fills 100% of iPhone 15 Pro screen
+                  // Allow WebView to stretch edge-to-edge under the Dynamic Island
                   webView.scrollView.contentInsetAdjustmentBehavior = .never
                   webView.scrollView.insetsLayoutMarginsFromSafeArea = false
                   webView.insetsLayoutMarginsFromSafeArea = false
-                  webView.scrollView.bounces = true
-                  webView.scrollView.bouncesZoom = true
+                  webView.scrollView.isScrollEnabled = false
+                  webView.scrollView.bounces = false
+                  webView.scrollView.bouncesZoom = false
+                  webView.scrollView.minimumZoomScale = 1.0
+                  webView.scrollView.maximumZoomScale = 1.0
 
                   let rootVC = FullscreenViewController()
                   rootVC.view = webView
@@ -236,6 +292,10 @@ jobs:
                   }
 
                   return true
+              }
+
+              func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+                  return nil
               }
 
               private func topViewController() -> UIViewController? {
@@ -281,7 +341,7 @@ jobs:
           )
           EOF
 
-          # 2. Compile directly with Swiftc
+          # 2. Direct Swift compilation
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           xcrun --sdk iphoneos swiftc \
             -target arm64-apple-ios15.0 \
@@ -290,7 +350,7 @@ jobs:
             -o "$APP_DIR/DodecaDragons" \
             main.swift
 
-          # 3. Write Info.plist with UILaunchScreen dictionary (iPhone 15 Pro Native Retina & Fullscreen)
+          # 3. Write Info.plist
           cat << 'EOF' > "$APP_DIR/Info.plist"
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -305,9 +365,9 @@ jobs:
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
-              <string>1.0.2</string>
+              <string>1.0.4</string>
               <key>CFBundleVersion</key>
-              <string>3</string>
+              <string>5</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
               <key>UIDeviceFamily</key>
@@ -345,15 +405,15 @@ jobs:
           cat << 'EOF' > deb_root/DEBIAN/control
           Package: com.demonin.dodecadragons
           Name: DodecaDragons
-          Version: 1.0.2
+          Version: 1.0.4
           Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port - Retina Fullscreen + Starter Boost
+          Description: DodecaDragons native iOS port - Notch Aware Top-Left Mini Home
           Maintainer: Demonin
           Author: Demonin
           Section: Games
           EOF
           chmod 755 deb_root/DEBIAN
-          dpkg-deb -Zxz --build deb_root DodecaDragons_1.0.2_iphoneos-arm64.deb
+          dpkg-deb -Zxz --build deb_root DodecaDragons_1.0.4_iphoneos-arm64.deb
 
           # 6. Package as .ipa
           mkdir -p Payload
@@ -365,5 +425,5 @@ jobs:
         with:
           name: DodecaDragons-Builds
           path: |
-            DodecaDragons_1.0.2_iphoneos-arm64.deb
+            DodecaDragons_1.0.4_iphoneos-arm64.deb
             DodecaDragons.ipa
