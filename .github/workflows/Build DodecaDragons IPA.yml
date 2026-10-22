@@ -175,4 +175,250 @@ jobs:
 
                       // Loop to update Gold Counter continuously
                       setInterval(function() {
-                          if (typeof
+                          if (typeof game !== 'undefined' && game.gold && typeof format === 'function') {
+                              goldBox.innerText = 'Gold: ' + format(game.gold);
+                          }
+                      }, 100);
+
+                      // Starting Resources: 300,000 Gold & 3,000 Fire
+                      function applyStartingResources(force) {
+                          if (typeof game === 'undefined' || typeof ExpantaNum === 'undefined') {
+                              setTimeout(function() { applyStartingResources(force); }, 100);
+                              return;
+                          }
+                          var alreadyInitialized = localStorage.getItem('ios_starter_boost_applied_v2');
+                          if (force || !alreadyInitialized) {
+                              if (game.gold && game.gold.lt(300000)) game.gold = new ExpantaNum(300000);
+                              if (game.fire && game.fire.lt(3000)) game.fire = new ExpantaNum(3000);
+                              if (typeof game.unlocks !== 'undefined' && game.unlocks < 1) game.unlocks = 1;
+                              localStorage.setItem('ios_starter_boost_applied_v2', 'true');
+                              if (typeof save === 'function') save();
+                          }
+                      }
+
+                      // Camera Controller (Pinch to zoom + 1-finger pan)
+                      var currentScale = 1.0;
+                      var startDist = 0, startScale = 1.0;
+                      var isPanning = false, lastX = 0, lastY = 0, accumDX = 0, accumDY = 0;
+
+                      function applyWindowScale(scale) {
+                          currentScale = Math.min(Math.max(scale, 0.45), 2.2);
+                          var zoomVal = (0.88 * currentScale).toFixed(3);
+                          var dynStyle = document.getElementById('dynamic-window-zoom');
+                          if (!dynStyle) {
+                              dynStyle = document.createElement('style');
+                              dynStyle.id = 'dynamic-window-zoom';
+                              document.head.appendChild(dynStyle);
+                          }
+                          dynStyle.textContent = '.window { zoom: ' + zoomVal + ' !important; }';
+                      }
+
+                      function getTouchDist(t1, t2) {
+                          return Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+                      }
+
+                      document.addEventListener('touchstart', function(e) {
+                          if (e.touches.length === 2) {
+                              isPanning = false;
+                              startDist = getTouchDist(e.touches[0], e.touches[1]);
+                              startScale = currentScale;
+                          } else if (e.touches.length === 1) {
+                              var tag = e.target.tagName ? e.target.tagName.toLowerCase() : '';
+                              if (tag === 'button' || tag === 'input' || tag === 'a' || tag === 'select' || e.target.onclick || e.target.closest('button') || e.target.closest('#ios-fixed-home-btn')) {
+                                  isPanning = false;
+                                  return;
+                              }
+                              isPanning = true;
+                              lastX = e.touches[0].clientX;
+                              lastY = e.touches[0].clientY;
+                              accumDX = 0;
+                              accumDY = 0;
+                          }
+                      }, { passive: true });
+
+                      document.addEventListener('touchmove', function(e) {
+                          if (e.touches.length === 2 && startDist > 0) {
+                              applyWindowScale(startScale * (getTouchDist(e.touches[0], e.touches[1]) / startDist));
+                          } else if (isPanning && e.touches.length === 1) {
+                              var dx = e.touches[0].clientX - lastX;
+                              var dy = e.touches[0].clientY - lastY;
+                              lastX = e.touches[0].clientX;
+                              lastY = e.touches[0].clientY;
+
+                              if (typeof xPos !== 'undefined' && typeof yPos !== 'undefined') {
+                                  xPos -= dx / currentScale;
+                                  yPos -= dy / currentScale;
+                              } else if (typeof posMove === 'function') {
+                                  accumDX += dx;
+                                  accumDY += dy;
+                                  var threshold = 110;
+                                  if (accumDX > threshold) { posMove(3); accumDX = 0; }
+                                  else if (accumDX < -threshold) { posMove(4); accumDX = 0; }
+                                  if (accumDY > threshold) { posMove(1); accumDY = 0; }
+                                  else if (accumDY < -threshold) { posMove(2); accumDY = 0; }
+                              }
+                          }
+                      }, { passive: true });
+
+                      document.addEventListener('touchend', function(e) {
+                          if (e.touches.length < 2) startDist = 0;
+                          if (e.touches.length === 0) isPanning = false;
+                      }, { passive: true });
+
+                      window.addEventListener('load', function() {
+                          applyStartingResources(false);
+                          if (typeof window.reset === 'function') {
+                              var origReset = window.reset;
+                              window.reset = function() {
+                                  origReset.apply(this, arguments);
+                                  applyStartingResources(true);
+                              };
+                          }
+                      });
+                  })();
+                  """
+
+                  let userScript = WKUserScript(source: enhancementsScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+                  config.userContentController.addUserScript(userScript)
+
+                  let webView = WKWebView(frame: screenBounds, configuration: config)
+                  self.webView = webView
+                  webView.uiDelegate = self
+                  webView.scrollView.delegate = self
+                  webView.contentScaleFactor = UIScreen.main.scale
+                  webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                  webView.isOpaque = false
+                  webView.backgroundColor = .black
+
+                  webView.scrollView.contentInsetAdjustmentBehavior = .never
+                  webView.scrollView.insetsLayoutMarginsFromSafeArea = false
+                  webView.insetsLayoutMarginsFromSafeArea = false
+                  webView.scrollView.isScrollEnabled = false
+                  webView.scrollView.bounces = false
+                  webView.scrollView.bouncesZoom = false
+                  webView.scrollView.minimumZoomScale = 1.0
+                  webView.scrollView.maximumZoomScale = 1.0
+
+                  let rootVC = FullscreenViewController()
+                  rootVC.view = webView
+                  window.rootViewController = rootVC
+                  window.makeKeyAndVisible()
+
+                  if let indexURL = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "WebAssets") {
+                      webView.loadFileURL(indexURL, allowingReadAccessTo: indexURL.deletingLastPathComponent())
+                  }
+
+                  return true
+              }
+
+              func viewForZooming(in scrollView: UIScrollView) -> UIView? { return nil }
+
+              private func topViewController() -> UIViewController? {
+                  var top = window?.rootViewController
+                  while let presented = top?.presentedViewController { top = presented }
+                  return top
+              }
+
+              func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+                  let alert = UIAlertController(title: "DodecaDragons", message: message, preferredStyle: .alert)
+                  alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
+                  topViewController()?.present(alert, animated: true)
+              }
+
+              func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+                  let alert = UIAlertController(title: "Confirm", message: message, preferredStyle: .alert)
+                  alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
+                  alert.addAction(UIAlertAction(title: "OK", style: .destructive) { _ in completionHandler(true) })
+                  topViewController()?.present(alert, animated: true)
+              }
+
+              func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
+                  let alert = UIAlertController(title: prompt, message: nil, preferredStyle: .alert)
+                  alert.addTextField { tf in tf.text = defaultText; tf.placeholder = "Paste save data..." }
+                  alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(nil) })
+                  alert.addAction(UIAlertAction(title: "Import", style: .default) { _ in completionHandler(alert.textFields?.first?.text) })
+                  topViewController()?.present(alert, animated: true)
+              }
+          }
+
+          UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil, NSStringFromClass(AppDelegate.self))
+          EOF
+
+          # 2. Compile directly with Swiftc
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          xcrun --sdk iphoneos swiftc \
+            -target arm64-apple-ios15.0 \
+            -sdk "$SDK_PATH" \
+            -O \
+            -o "$APP_DIR/DodecaDragons" \
+            main.swift
+
+          # 3. Write Info.plist
+          cat << 'EOF' > "$APP_DIR/Info.plist"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>DodecaDragons</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.demonin.dodecadragons</string>
+              <key>CFBundleName</key>
+              <string>DodecaDragons</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0.7</string>
+              <key>CFBundleVersion</key>
+              <string>8</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>UIDeviceFamily</key>
+              <array><integer>1</integer><integer>2</integer></array>
+              <key>UILaunchScreen</key><dict/>
+              <key>UIRequiredDeviceCapabilities</key><array><string>arm64</string></array>
+              <key>UIRequiresFullScreen</key><true/>
+              <key>UIStatusBarHidden</key><true/>
+              <key>UIViewControllerBasedStatusBarAppearance</key><true/>
+              <key>UISupportedInterfaceOrientations</key>
+              <array>
+                  <string>UIInterfaceOrientationPortrait</string>
+                  <string>UIInterfaceOrientationLandscapeLeft</string>
+                  <string>UIInterfaceOrientationLandscapeRight</string>
+              </array>
+          </dict>
+          </plist>
+          EOF
+
+          # 4. Sign binary
+          brew install dpkg ldid
+          ldid -S "$APP_DIR/DodecaDragons"
+
+          # 5. Package as .deb
+          mkdir -p deb_root/DEBIAN deb_root/Applications
+          cp -r "$APP_DIR" deb_root/Applications/
+          cat << 'EOF' > deb_root/DEBIAN/control
+          Package: com.demonin.dodecadragons
+          Name: DodecaDragons
+          Version: 1.0.7
+          Architecture: iphoneos-arm64
+          Description: DodecaDragons native iOS port - Upper-Right Home & 300k Gold Start
+          Maintainer: Demonin
+          Author: Demonin
+          Section: Games
+          EOF
+          chmod 755 deb_root/DEBIAN
+          dpkg-deb -Zxz --build deb_root DodecaDragons_1.0.7_iphoneos-arm64.deb
+
+          # 6. Package as .ipa
+          mkdir -p Payload
+          cp -r "$APP_DIR" Payload/
+          zip -r9 DodecaDragons.ipa Payload
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: DodecaDragons-Builds
+          path: |
+            DodecaDragons_1.0.7_iphoneos-arm64.deb
+            DodecaDragons.ipa
