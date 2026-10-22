@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build Notch-Proof App with Top-Right Double Tap Home
+      - name: Build App with Crisp Text & Zero Window Overflow
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -70,6 +70,8 @@ jobs:
                           html {
                               background-color: #000 !important;
                               overflow: hidden !important;
+                              -webkit-text-size-adjust: none !important;
+                              text-size-adjust: none !important;
                           }
 
                           body {
@@ -87,28 +89,62 @@ jobs:
                               -webkit-user-select: none !important;
                               user-select: none !important;
                               touch-action: none !important;
+                              -webkit-font-smoothing: antialiased !important;
                           }
 
-                          /* Hide original FPS and Navigation Arrows */
+                          /* Improve Text Readability & Prevent Button/Text Overflow */
+                          body, .window, .window-body, button, p, div, span, td, th {
+                              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+                              letter-spacing: 0.1px !important;
+                              box-sizing: border-box !important;
+                          }
+
+                          .title-bar-text {
+                              font-weight: 700 !important;
+                              font-size: 13px !important;
+                              letter-spacing: 0.2px !important;
+                          }
+
+                          /* Use proportional transform scaling instead of CSS zoom so text & buttons NEVER overflow windows */
+                          .window {
+                              zoom: 1 !important;
+                              transform: scale(0.88);
+                              transform-origin: center center;
+                              backface-visibility: hidden;
+                              -webkit-backface-visibility: hidden;
+                          }
+
+                          .window-body {
+                              overflow-x: hidden !important;
+                              overflow-y: auto !important;
+                              word-wrap: break-word !important;
+                              overflow-wrap: break-word !important;
+                              line-height: 1.25 !important;
+                              touch-action: pan-y !important;
+                          }
+
+                          /* Keep buttons strictly inside their window containers with legible wrapped text */
+                          .window button {
+                              max-width: 100% !important;
+                              white-space: normal !important;
+                              word-wrap: break-word !important;
+                              overflow-wrap: break-word !important;
+                              height: auto !important;
+                              min-height: 24px !important;
+                              padding: 4px 6px !important;
+                              line-height: 1.15 !important;
+                              font-size: 11.5px !important;
+                              font-weight: 600 !important;
+                          }
+
+                          /* Hide original FPS, Navigation Arrows, and original Home Icon */
                           #fps, .fps, [id*="fps" i],
                           #arrowUp, #arrowDown, #arrowLeft, #arrowRight,
-                          img[src*="arrowUp"], img[src*="arrowDown"], img[src*="arrowLeft"], img[src*="arrowRight"] {
+                          img[src*="arrowUp"], img[src*="arrowDown"], img[src*="arrowLeft"], img[src*="arrowRight"],
+                          #home, img#home, [onclick*="posSet(0,0)"] {
                               display: none !important;
                               visibility: hidden !important;
                               pointer-events: none !important;
-                          }
-
-                          /* Hide any original home icon */
-                          #home, img#home, [onclick*="posSet(0,0)"] {
-                              display: none !important;
-                          }
-
-                          .window {
-                              zoom: 0.88;
-                          }
-
-                          .window-body, textarea, select {
-                              touch-action: pan-y !important;
                           }
 
                           /* Fixed Gold Box HUD styling in top-left */
@@ -119,9 +155,9 @@ jobs:
                               background: #c0c0c0;
                               border: 2px outset #ffffff;
                               padding: 4px 10px;
-                              font-family: 'Pixelated MS Sans Serif', Arial, sans-serif;
-                              font-size: 16px;
-                              font-weight: bold;
+                              font-family: -apple-system, BlinkMacSystemFont, sans-serif !important;
+                              font-size: 15px;
+                              font-weight: 700;
                               color: #000;
                               z-index: 2147483647 !important;
                               box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
@@ -168,11 +204,9 @@ jobs:
                           var y = touch.clientY;
                           var screenW = window.innerWidth;
 
-                          // Active trigger zone: within 120px from right edge, 100px from top
                           if (x >= screenW - 120 && y <= 100) {
                               var now = Date.now();
                               if (now - lastTopRightTapTime < 350) {
-                                  // Double-tap confirmed: execute home function
                                   if (typeof posSet === 'function') {
                                       posSet(0, 0);
                                   }
@@ -185,21 +219,21 @@ jobs:
                           }
                       }, { passive: true });
 
-                      // Camera Controller (Pinch to zoom + 1-finger pan)
+                      // Camera Controller (Pinch to zoom + 1-finger pan using transform: scale so layout never overflows)
                       var currentScale = 1.0;
                       var startDist = 0, startScale = 1.0;
                       var isPanning = false, lastX = 0, lastY = 0, accumDX = 0, accumDY = 0;
 
                       function applyWindowScale(scale) {
                           currentScale = Math.min(Math.max(scale, 0.45), 2.2);
-                          var zoomVal = (0.88 * currentScale).toFixed(3);
+                          var scaleVal = (0.88 * currentScale).toFixed(3);
                           var dynStyle = document.getElementById('dynamic-window-zoom');
                           if (!dynStyle) {
                               dynStyle = document.createElement('style');
                               dynStyle.id = 'dynamic-window-zoom';
                               document.head.appendChild(dynStyle);
                           }
-                          dynStyle.textContent = '.window { zoom: ' + zoomVal + ' !important; }';
+                          dynStyle.textContent = '.window { zoom: 1 !important; transform: scale(' + scaleVal + ') !important; transform-origin: center center !important; }';
                       }
 
                       function getTouchDist(t1, t2) {
@@ -357,9 +391,9 @@ jobs:
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
-              <string>1.0.9</string>
+              <string>1.1.0</string>
               <key>CFBundleVersion</key>
-              <string>10</string>
+              <string>11</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
               <key>UIDeviceFamily</key>
@@ -389,15 +423,15 @@ jobs:
           cat << 'EOF' > deb_root/DEBIAN/control
           Package: com.demonin.dodecadragons
           Name: DodecaDragons
-          Version: 1.0.9
+          Version: 1.1.0
           Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port - Top Right Double Tap Home
+          Description: DodecaDragons native iOS port - Crisp Font & Proportional Scaling
           Maintainer: Demonin
           Author: Demonin
           Section: Games
           EOF
           chmod 755 deb_root/DEBIAN
-          dpkg-deb -Zxz --build deb_root DodecaDragons_1.0.9_iphoneos-arm64.deb
+          dpkg-deb -Zxz --build deb_root DodecaDragons_1.1.0_iphoneos-arm64.deb
 
           # 6. Package as .ipa
           mkdir -p Payload
@@ -409,5 +443,5 @@ jobs:
         with:
           name: DodecaDragons-Builds
           path: |
-            DodecaDragons_1.0.9_iphoneos-arm64.deb
+            DodecaDragons_1.1.0_iphoneos-arm64.deb
             DodecaDragons.ipa
