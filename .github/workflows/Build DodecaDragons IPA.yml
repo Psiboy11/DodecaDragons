@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build Fullscreen Native App, .deb, and .ipa
+      - name: Build Fullscreen App with Touch Panning & Starting Boost
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -20,66 +20,56 @@ jobs:
           # Copy web assets
           cp -r index.html style.css 98.css changelog.txt savebank.txt fonts img scripts "$APP_DIR/WebAssets/" 2>/dev/null || true
 
+          # Patch scripts/main.js or scripts/game.js directly if present so default reset() also has 3M gold & 2000 fire
+          for f in "$APP_DIR/WebAssets/scripts/"*.js; do
+            if [ -f "$f" ]; then
+              sed -i '' 's/gold: new ExpantaNum(0)/gold: new ExpantaNum(3000000)/g' "$f" 2>/dev/null || true
+              sed -i '' 's/gold:new ExpantaNum(0)/gold:new ExpantaNum(3000000)/g' "$f" 2>/dev/null || true
+              sed -i '' 's/fire: new ExpantaNum(0)/fire: new ExpantaNum(2000)/g' "$f" 2>/dev/null || true
+              sed -i '' 's/fire:new ExpantaNum(0)/fire:new ExpantaNum(2000)/g' "$f" 2>/dev/null || true
+            fi
+          done
+
           # 1. Write Native Swift Source
           cat << 'EOF' > main.swift
           import UIKit
           import WebKit
+
+          class FullscreenViewController: UIViewController {
+              override var prefersStatusBarHidden: Bool { true }
+              override var prefersHomeIndicatorAutoHidden: Bool { true }
+              override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }
+          }
 
           class AppDelegate: UIResponder, UIApplicationDelegate, WKUIDelegate {
               var window: UIWindow?
               var webView: WKWebView?
 
               func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-                  let window = UIWindow(frame: UIScreen.main.bounds)
+                  let screenBounds = UIScreen.main.bounds
+                  let window = UIWindow(frame: screenBounds)
+                  window.contentScaleFactor = UIScreen.main.scale
                   self.window = window
 
                   let config = WKWebViewConfiguration()
                   config.websiteDataStore = .default()
                   config.preferences.javaScriptCanOpenWindowsAutomatically = true
 
-                  // Fullscreen, Smaller Home Icon, and Scaled Windows Script
                   let enhancementsScript = """
                   (function() {
-                      // 1. Force Viewport to span edge-to-edge (viewport-fit=cover bypasses the notch)
+                      // 1. High-DPI Safari Desktop Canvas (1280px wide, edge-to-edge, full pinch-to-zoom)
                       var meta = document.querySelector('meta[name="viewport"]');
                       if (!meta) {
                           meta = document.createElement('meta');
+                          meta.name = 'viewport';
                           document.head.appendChild(meta);
                       }
-                      meta.name = 'viewport';
-                      meta.content = 'width=device-width, initial-scale=1.0, minimum-scale=0.25, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover';
+                      meta.content = 'width=1280, minimum-scale=0.2, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover';
 
-                      // 2. CSS Injections
+                      // 2. Inject CSS targeting exact DodecaDragons IDs
                       var style = document.createElement('style');
                       style.textContent = `
-                          /* True Edge-to-Edge Fullscreen */
-                          html, body {
-                              width: 100vw !important;
-                              height: 100vh !important;
-                              margin: 0 !important;
-                              padding: 0 !important;
-                              background-color: #c0c0c0 !important;
-                              overflow: auto !important;
-                              -webkit-overflow-scrolling: touch !important;
-                          }
-
-                          /* Make Windows slightly smaller (85%) */
-                          .window {
-                              zoom: 0.85 !important;
-                          }
-
-                          /* Pin Home Icon to top-left corner and scale down */
-                          img[src*="home" i], button:has(img[src*="home" i]), .home-btn, #homeBtn {
-                              position: fixed !important;
-                              top: max(15px, env(safe-area-inset-top)) !important;
-                              left: max(15px, env(safe-area-inset-left)) !important;
-                              zoom: 0.55 !important;
-                              z-index: 999999 !important;
-                              margin: 0 !important;
-                              box-shadow: 0 4px 8px rgba(0,0,0,0.3) !important;
-                          }
-
-                          /* Hide FPS Counter completely */
+                          /* Remove FPS Counter */
                           #fps, .fps, [id*="fps" i] {
                               display: none !important;
                               visibility: hidden !important;
@@ -87,21 +77,130 @@ jobs:
                               pointer-events: none !important;
                           }
 
-                          /* Remove Navigation Arrows */
-                          .nav-arrow, .arrow, [class*="nav-arrow" i], [id*="arrow" i], 
-                          button[id*="arrow" i], .scroll-arrow, .window-nav-arrow {
+                          /* Remove DodecaDragons Navigation Arrows */
+                          #arrowUp, #arrowDown, #arrowLeft, #arrowRight,
+                          img[src*="arrowUp"], img[src*="arrowDown"], img[src*="arrowLeft"], img[src*="arrowRight"] {
                               display: none !important;
                               visibility: hidden !important;
                               pointer-events: none !important;
                           }
+
+                          /* Pin #home icon to top-left corner and make it smaller */
+                          #home, img#home, [onclick*="posSet(0,0)"] {
+                              position: fixed !important;
+                              top: max(12px, env(safe-area-inset-top)) !important;
+                              left: max(12px, env(safe-area-inset-left)) !important;
+                              width: 32px !important;
+                              height: 32px !important;
+                              z-index: 999999 !important;
+                              margin: 0 !important;
+                              padding: 0 !important;
+                              display: block !important;
+                              visibility: visible !important;
+                              opacity: 0.9 !important;
+                          }
+
+                          /* Make the game windows slightly smaller */
+                          .window {
+                              transform: scale(0.88);
+                              transform-origin: top left;
+                          }
+
+                          /* High-DPI Fullscreen Canvas */
+                          body, html {
+                              margin: 0 !important;
+                              padding: 0 !important;
+                              width: 100% !important;
+                              height: 100% !important;
+                              -webkit-text-size-adjust: 100% !important;
+                              -webkit-user-select: none !important;
+                              user-select: none !important;
+                          }
                       `;
                       document.head.appendChild(style);
 
-                      // Redundant cleanup on DOM load
-                      window.addEventListener('DOMContentLoaded', () => {
-                          const fpsEl = document.getElementById('fps');
-                          if (fpsEl) fpsEl.remove();
+                      // 3. Apply Starting Gold (3,000,000) and Fire (2,000)
+                      function applyStartingResources(force) {
+                          if (typeof game === 'undefined' || typeof ExpantaNum === 'undefined') {
+                              setTimeout(function() { applyStartingResources(force); }, 100);
+                              return;
+                          }
+                          var alreadyInitialized = localStorage.getItem('ios_starter_boost_applied');
+                          if (force || !alreadyInitialized) {
+                              if (game.gold && game.gold.lt(3000000)) {
+                                  game.gold = new ExpantaNum(3000000);
+                              }
+                              if (game.fire && game.fire.lt(2000)) {
+                                  game.fire = new ExpantaNum(2000);
+                              }
+                              // Ensure Fire tab/upgrades are visible if starting with Fire
+                              if (typeof game.unlocks !== 'undefined' && game.unlocks < 1) {
+                                  game.unlocks = 1;
+                              }
+                              localStorage.setItem('ios_starter_boost_applied', 'true');
+                              if (typeof save === 'function') save();
+                          }
+                      }
+
+                      // Hook into hard reset() so resetting the game also gives 3M gold & 2,000 fire
+                      window.addEventListener('load', function() {
+                          applyStartingResources(false);
+                          if (typeof window.reset === 'function') {
+                              var origReset = window.reset;
+                              window.reset = function() {
+                                  origReset.apply(this, arguments);
+                                  applyStartingResources(true);
+                              };
+                          }
                       });
+
+                      // 4. One-Finger Touch-Drag Map Panning
+                      var isPanning = false;
+                      var startX = 0, startY = 0;
+                      var accumDX = 0, accumDY = 0;
+
+                      document.addEventListener('touchstart', function(e) {
+                          if (e.touches.length !== 1) {
+                              isPanning = false;
+                              return;
+                          }
+                          var tag = e.target.tagName ? e.target.tagName.toLowerCase() : '';
+                          if (tag === 'button' || tag === 'input' || tag === 'a' || tag === 'select' || e.target.onclick || e.target.closest('button')) {
+                              isPanning = false;
+                              return;
+                          }
+                          isPanning = true;
+                          startX = e.touches[0].clientX;
+                          startY = e.touches[0].clientY;
+                          accumDX = 0;
+                          accumDY = 0;
+                      }, { passive: true });
+
+                      document.addEventListener('touchmove', function(e) {
+                          if (!isPanning || e.touches.length !== 1) return;
+                          var dx = e.touches[0].clientX - startX;
+                          var dy = e.touches[0].clientY - startY;
+                          startX = e.touches[0].clientX;
+                          startY = e.touches[0].clientY;
+
+                          // Scroll native viewport smoothly
+                          window.scrollBy(-dx, -dy);
+
+                          // Also pan DodecaDragons internal map coordinates if posMove / xPos / yPos exist
+                          accumDX += dx;
+                          accumDY += dy;
+                          var stepThreshold = 140; // Finger drag distance to trigger a grid shift
+                          if (typeof posMove === 'function') {
+                              if (accumDX > stepThreshold) { posMove(3); accumDX = 0; }
+                              else if (accumDX < -stepThreshold) { posMove(4); accumDX = 0; }
+                              if (accumDY > stepThreshold) { posMove(1); accumDY = 0; }
+                              else if (accumDY < -stepThreshold) { posMove(2); accumDY = 0; }
+                          }
+                      }, { passive: true });
+
+                      document.addEventListener('touchend', function() {
+                          isPanning = false;
+                      }, { passive: true });
                   })();
                   """
 
@@ -112,21 +211,22 @@ jobs:
                   )
                   config.userContentController.addUserScript(userScript)
 
-                  let webView = WKWebView(frame: window.bounds, configuration: config)
+                  let webView = WKWebView(frame: screenBounds, configuration: config)
                   self.webView = webView
                   webView.uiDelegate = self
+                  webView.contentScaleFactor = UIScreen.main.scale
                   webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
                   webView.isOpaque = false
-                  webView.backgroundColor = UIColor(red: 0.75, green: 0.75, blue: 0.75, alpha: 1.0)
-                  
-                  // Force scroll view to ignore safe area margins (Fills the screen on iPhone 15 Pro)
+                  webView.backgroundColor = UIColor(red: 0.13, green: 0.13, blue: 0.13, alpha: 1.0)
+
+                  // Bypass Safe Area insets so WebView fills 100% of iPhone 15 Pro screen
                   webView.scrollView.contentInsetAdjustmentBehavior = .never
                   webView.scrollView.insetsLayoutMarginsFromSafeArea = false
+                  webView.insetsLayoutMarginsFromSafeArea = false
                   webView.scrollView.bounces = true
-                  webView.scrollView.alwaysBounceVertical = false
-                  webView.scrollView.alwaysBounceHorizontal = false
+                  webView.scrollView.bouncesZoom = true
 
-                  let rootVC = UIViewController()
+                  let rootVC = FullscreenViewController()
                   rootVC.view = webView
                   window.rootViewController = rootVC
                   window.makeKeyAndVisible()
@@ -146,14 +246,12 @@ jobs:
                   return top
               }
 
-              // Handle JavaScript alert()
               func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
                   let alert = UIAlertController(title: "DodecaDragons", message: message, preferredStyle: .alert)
                   alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
                   topViewController()?.present(alert, animated: true)
               }
 
-              // Handle JavaScript confirm()
               func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
                   let alert = UIAlertController(title: "Confirm", message: message, preferredStyle: .alert)
                   alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
@@ -161,7 +259,6 @@ jobs:
                   topViewController()?.present(alert, animated: true)
               }
 
-              // Handle JavaScript prompt() - Save string importing/exporting
               func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
                   let alert = UIAlertController(title: prompt, message: nil, preferredStyle: .alert)
                   alert.addTextField { textField in
@@ -187,13 +284,13 @@ jobs:
           # 2. Compile directly with Swiftc
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           xcrun --sdk iphoneos swiftc \
-            -target arm64-apple-ios14.0 \
+            -target arm64-apple-ios15.0 \
             -sdk "$SDK_PATH" \
             -O \
             -o "$APP_DIR/DodecaDragons" \
             main.swift
 
-          # 3. Write Info.plist
+          # 3. Write Info.plist with UILaunchScreen dictionary (iPhone 15 Pro Native Retina & Fullscreen)
           cat << 'EOF' > "$APP_DIR/Info.plist"
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -205,18 +302,29 @@ jobs:
               <string>com.demonin.dodecadragons</string>
               <key>CFBundleName</key>
               <string>DodecaDragons</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
               <key>CFBundleShortVersionString</key>
-              <string>1.0.0</string>
+              <string>1.0.2</string>
               <key>CFBundleVersion</key>
-              <string>1</string>
+              <string>3</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
+              <key>UIDeviceFamily</key>
+              <array>
+                  <integer>1</integer>
+                  <integer>2</integer>
+              </array>
+              <key>UILaunchScreen</key>
+              <dict/>
               <key>UIRequiredDeviceCapabilities</key>
               <array><string>arm64</string></array>
+              <key>UIRequiresFullScreen</key>
+              <true/>
               <key>UIStatusBarHidden</key>
               <true/>
               <key>UIViewControllerBasedStatusBarAppearance</key>
-              <false/>
+              <true/>
               <key>UISupportedInterfaceOrientations</key>
               <array>
                   <string>UIInterfaceOrientationPortrait</string>
@@ -237,15 +345,15 @@ jobs:
           cat << 'EOF' > deb_root/DEBIAN/control
           Package: com.demonin.dodecadragons
           Name: DodecaDragons
-          Version: 1.0.0
+          Version: 1.0.2
           Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port - True Fullscreen
+          Description: DodecaDragons native iOS port - Retina Fullscreen + Starter Boost
           Maintainer: Demonin
           Author: Demonin
           Section: Games
           EOF
           chmod 755 deb_root/DEBIAN
-          dpkg-deb -Zxz --build deb_root DodecaDragons_1.0.0_iphoneos-arm64.deb
+          dpkg-deb -Zxz --build deb_root DodecaDragons_1.0.2_iphoneos-arm64.deb
 
           # 6. Package as .ipa
           mkdir -p Payload
@@ -257,5 +365,5 @@ jobs:
         with:
           name: DodecaDragons-Builds
           path: |
-            DodecaDragons_1.0.0_iphoneos-arm64.deb
+            DodecaDragons_1.0.2_iphoneos-arm64.deb
             DodecaDragons.ipa
