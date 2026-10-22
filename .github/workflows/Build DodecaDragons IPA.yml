@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build App with Crisp Text & Zero Window Overflow
+      - name: Build Connected-Zoom & High-Contrast App
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -90,51 +90,62 @@ jobs:
                               user-select: none !important;
                               touch-action: none !important;
                               -webkit-font-smoothing: antialiased !important;
+                              -webkit-text-size-adjust: none !important;
                           }
 
-                          /* Improve Text Readability & Prevent Button/Text Overflow */
+                          /* Crisp system typography that scales down cleanly without overflowing */
                           body, .window, .window-body, button, p, div, span, td, th {
                               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
-                              letter-spacing: 0.1px !important;
+                              -webkit-text-size-adjust: none !important;
+                              text-size-adjust: none !important;
                               box-sizing: border-box !important;
                           }
 
                           .title-bar-text {
                               font-weight: 700 !important;
-                              font-size: 13px !important;
-                              letter-spacing: 0.2px !important;
+                              font-size: 12px !important;
                           }
 
-                          /* Use proportional transform scaling instead of CSS zoom so text & buttons NEVER overflow windows */
+                          /* Use CSS zoom (NOT transform) so left/top coordinates scale together and windows stay connected! */
                           .window {
-                              zoom: 1 !important;
-                              transform: scale(0.88);
-                              transform-origin: center center;
-                              backface-visibility: hidden;
-                              -webkit-backface-visibility: hidden;
+                              zoom: 0.88;
+                              transform: none !important;
                           }
 
                           .window-body {
-                              overflow-x: hidden !important;
-                              overflow-y: auto !important;
+                              font-size: 11.5px !important;
+                              line-height: 1.2 !important;
                               word-wrap: break-word !important;
                               overflow-wrap: break-word !important;
-                              line-height: 1.25 !important;
                               touch-action: pan-y !important;
                           }
 
-                          /* Keep buttons strictly inside their window containers with legible wrapped text */
                           .window button {
-                              max-width: 100% !important;
+                              font-size: 11px !important;
+                              font-weight: 600 !important;
+                              line-height: 1.15 !important;
                               white-space: normal !important;
                               word-wrap: break-word !important;
-                              overflow-wrap: break-word !important;
-                              height: auto !important;
-                              min-height: 24px !important;
-                              padding: 4px 6px !important;
-                              line-height: 1.15 !important;
-                              font-size: 11.5px !important;
-                              font-weight: 600 !important;
+                              padding: 3px 5px !important;
+                          }
+
+                          /* Fix unreadable blue text on purple/dark backgrounds -> Bright Sky Cyan with contrast shadow */
+                          [style*="color: blue" i],
+                          [style*="color:blue" i],
+                          [style*="color: #00f" i],
+                          [style*="color:#00f" i],
+                          [style*="color: #0000ff" i],
+                          [style*="color:#0000ff" i],
+                          [style*="color: rgb(0, 0, 255)" i],
+                          [style*="color: #008" i],
+                          [style*="color:#008" i],
+                          [style*="color: #000080" i],
+                          [style*="color: navy" i],
+                          font[color="blue" i],
+                          font[color="#0000ff" i] {
+                              color: #66e8ff !important;
+                              text-shadow: 0px 1px 2px rgba(0, 0, 0, 0.95), 0px 0px 3px rgba(0, 0, 0, 0.8) !important;
+                              font-weight: 700 !important;
                           }
 
                           /* Hide original FPS, Navigation Arrows, and original Home Icon */
@@ -172,11 +183,31 @@ jobs:
                       goldBox.innerText = 'Gold: 0';
                       document.body.appendChild(goldBox);
 
+                      // Periodically update Gold HUD & brighten any dynamically computed dark-blue text
                       setInterval(function() {
                           if (typeof game !== 'undefined' && game.gold && typeof format === 'function') {
                               goldBox.innerText = 'Gold: ' + format(game.gold);
                           }
                       }, 100);
+
+                      // Also scan stylesheets/elements once loaded to replace any class-based dark blue text
+                      function brightenBlueText() {
+                          var elements = document.querySelectorAll('.window-body span, .window-body p, .window-body div, .window-body b, .window-body button');
+                          for (var i = 0; i < elements.length; i++) {
+                              var el = elements[i];
+                              var c = window.getComputedStyle(el).color;
+                              // Match pure blue or dark blue (R < 40, G < 70, B > 120)
+                              var m = c.match(/rgb\\((\\d+),\\s*(\\d+),\\s*(\\d+)\\)/);
+                              if (m) {
+                                  var r = parseInt(m[1], 10), g = parseInt(m[2], 10), b = parseInt(m[3], 10);
+                                  if (r < 50 && g < 85 && b > 120) {
+                                      el.style.setProperty('color', '#66e8ff', 'important');
+                                      el.style.setProperty('text-shadow', '0px 1px 2px rgba(0,0,0,0.95)', 'important');
+                                  }
+                              }
+                          }
+                      }
+                      setInterval(brightenBlueText, 800);
 
                       // Starting Resources
                       function applyStartingResources(force) {
@@ -219,21 +250,21 @@ jobs:
                           }
                       }, { passive: true });
 
-                      // Camera Controller (Pinch to zoom + 1-finger pan using transform: scale so layout never overflows)
+                      // Camera Controller (Pinch to zoom + 1-finger pan using CSS zoom so windows stay locked together)
                       var currentScale = 1.0;
                       var startDist = 0, startScale = 1.0;
                       var isPanning = false, lastX = 0, lastY = 0, accumDX = 0, accumDY = 0;
 
                       function applyWindowScale(scale) {
                           currentScale = Math.min(Math.max(scale, 0.45), 2.2);
-                          var scaleVal = (0.88 * currentScale).toFixed(3);
+                          var zoomVal = (0.88 * currentScale).toFixed(3);
                           var dynStyle = document.getElementById('dynamic-window-zoom');
                           if (!dynStyle) {
                               dynStyle = document.createElement('style');
                               dynStyle.id = 'dynamic-window-zoom';
                               document.head.appendChild(dynStyle);
                           }
-                          dynStyle.textContent = '.window { zoom: 1 !important; transform: scale(' + scaleVal + ') !important; transform-origin: center center !important; }';
+                          dynStyle.textContent = '.window { zoom: ' + zoomVal + ' !important; transform: none !important; }';
                       }
 
                       function getTouchDist(t1, t2) {
@@ -290,6 +321,7 @@ jobs:
 
                       window.addEventListener('load', function() {
                           applyStartingResources(false);
+                          brightenBlueText();
                           if (typeof window.reset === 'function') {
                               var origReset = window.reset;
                               window.reset = function() {
@@ -391,9 +423,9 @@ jobs:
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
-              <string>1.1.0</string>
+              <string>1.1.1</string>
               <key>CFBundleVersion</key>
-              <string>11</string>
+              <string>12</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
               <key>UIDeviceFamily</key>
@@ -423,15 +455,15 @@ jobs:
           cat << 'EOF' > deb_root/DEBIAN/control
           Package: com.demonin.dodecadragons
           Name: DodecaDragons
-          Version: 1.1.0
+          Version: 1.1.1
           Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port - Crisp Font & Proportional Scaling
+          Description: DodecaDragons native iOS port - Connected Zoom & Legible Blue Text
           Maintainer: Demonin
           Author: Demonin
           Section: Games
           EOF
           chmod 755 deb_root/DEBIAN
-          dpkg-deb -Zxz --build deb_root DodecaDragons_1.1.0_iphoneos-arm64.deb
+          dpkg-deb -Zxz --build deb_root DodecaDragons_1.1.1_iphoneos-arm64.deb
 
           # 6. Package as .ipa
           mkdir -p Payload
@@ -443,5 +475,5 @@ jobs:
         with:
           name: DodecaDragons-Builds
           path: |
-            DodecaDragons_1.1.0_iphoneos-arm64.deb
+            DodecaDragons_1.1.1_iphoneos-arm64.deb
             DodecaDragons.ipa
