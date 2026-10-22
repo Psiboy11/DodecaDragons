@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build Notch-Proof App with Fixed HUD and Auto-Scaling Windows
+      - name: Build Notch-Proof App with Fixed HUD (Original Window Sizing)
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -115,20 +115,12 @@ jobs:
                               transform: none !important;
                           }
 
-                          /* Make Windows Auto-Scale to fit their contents perfectly */
+                          /* Restored Original Window Sizing */
                           .window {
                               zoom: 0.88;
-                              height: fit-content !important;
-                              min-height: unset !important;
-                              max-height: 85vh !important;
-                              display: flex !important;
-                              flex-direction: column !important;
                           }
 
-                          .window-body {
-                              height: auto !important;
-                              flex: 1 1 auto !important;
-                              overflow-y: auto !important;
+                          .window-body, textarea, select {
                               touch-action: pan-y !important;
                           }
 
@@ -353,9 +345,9 @@ jobs:
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
-              <string>1.0.5</string>
+              <string>1.0.6</string>
               <key>CFBundleVersion</key>
-              <string>6</string>
+              <string>7</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
               <key>UIDeviceFamily</key>
@@ -385,15 +377,15 @@ jobs:
           cat << 'EOF' > deb_root/DEBIAN/control
           Package: com.demonin.dodecadragons
           Name: DodecaDragons
-          Version: 1.0.5
+          Version: 1.0.6
           Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port - True Notch Fix + Custom Gold HUD
+          Description: DodecaDragons native iOS port - Restored Original Window Sizing
           Maintainer: Demonin
           Author: Demonin
           Section: Games
           EOF
           chmod 755 deb_root/DEBIAN
-          dpkg-deb -Zxz --build deb_root DodecaDragons_1.0.5_iphoneos-arm64.deb
+          dpkg-deb -Zxz --build deb_root DodecaDragons_1.0.6_iphoneos-arm64.deb
 
           # 6. Package as .ipa
           mkdir -p Payload
@@ -405,5 +397,5 @@ jobs:
         with:
           name: DodecaDragons-Builds
           path: |
-            DodecaDragons_1.0.5_iphoneos-arm64.deb
+            DodecaDragons_1.0.6_iphoneos-arm64.deb
             DodecaDragons.ipa
