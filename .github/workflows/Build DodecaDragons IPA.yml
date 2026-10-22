@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build Notch-Aware Fullscreen App
+      - name: Build Notch-Proof App with Fixed HUD and Auto-Scaling Windows
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -20,7 +20,7 @@ jobs:
           # Copy web assets
           cp -r index.html style.css 98.css changelog.txt savebank.txt fonts img scripts "$APP_DIR/WebAssets/" 2>/dev/null || true
 
-          # Patch scripts directly for 3,000,000 starting gold & 2,000 fire
+          # Patch scripts for 3,000,000 starting gold & 2,000 fire
           for f in "$APP_DIR/WebAssets/scripts/"*.js; do
             if [ -f "$f" ]; then
               sed -i '' 's/gold: new ExpantaNum(0)/gold: new ExpantaNum(3000000)/g' "$f" 2>/dev/null || true
@@ -57,7 +57,6 @@ jobs:
 
                   let enhancementsScript = """
                   (function() {
-                      // 1. Lock viewport with cover mode so safe-area-insets map to the Dynamic Island / Notch
                       var meta = document.querySelector('meta[name="viewport"]');
                       if (!meta) {
                           meta = document.createElement('meta');
@@ -66,41 +65,33 @@ jobs:
                       }
                       meta.content = 'width=1280, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
 
-                      // 2. Inject CSS for notch padding and compact top-left Home button
                       var style = document.createElement('style');
                       style.textContent = `
-                          /* Fixed root canvas prevents bouncing or resize flashes */
-                          html, body {
+                          /* Hardcode the HTML background to black to hide the notch area */
+                          html {
+                              background-color: #000 !important;
+                              overflow: hidden !important;
+                          }
+
+                          /* Confine the actual body to STRICTLY inside the safe area (No notch clipping ever) */
+                          body {
                               position: fixed !important;
-                              top: 0 !important;
-                              left: 0 !important;
-                              width: 100vw !important;
-                              height: 100vh !important;
+                              top: env(safe-area-inset-top) !important;
+                              left: env(safe-area-inset-left) !important;
+                              right: env(safe-area-inset-right) !important;
+                              bottom: env(safe-area-inset-bottom) !important;
+                              width: auto !important;
+                              height: auto !important;
                               margin: 0 !important;
                               padding: 0 !important;
                               overflow: hidden !important;
-                              -webkit-text-size-adjust: 100% !important;
+                              background-color: #1a1a1a !important; 
                               -webkit-user-select: none !important;
-                              user-select: none !important;
                               touch-action: none !important;
                           }
 
-                          /* Notch awareness: buffer primary interactive overlay from Island / Notch */
-                          :root {
-                              --notch-top: env(safe-area-inset-top, 0px);
-                              --notch-left: env(safe-area-inset-left, 0px);
-                              --notch-right: env(safe-area-inset-right, 0px);
-                          }
-
-                          /* Remove FPS Counter */
-                          #fps, .fps, [id*="fps" i] {
-                              display: none !important;
-                              visibility: hidden !important;
-                              opacity: 0 !important;
-                              pointer-events: none !important;
-                          }
-
-                          /* Remove DodecaDragons Navigation Arrows */
+                          /* Hide original FPS and Navigation Arrows */
+                          #fps, .fps, [id*="fps" i],
                           #arrowUp, #arrowDown, #arrowLeft, #arrowRight,
                           img[src*="arrowUp"], img[src*="arrowDown"], img[src*="arrowLeft"], img[src*="arrowRight"] {
                               display: none !important;
@@ -108,40 +99,72 @@ jobs:
                               pointer-events: none !important;
                           }
 
-                          /* Notch-aware smaller Home button strictly locked to the upper-left */
+                          /* Move smaller Home button to the UPPER RIGHT */
                           #home, img#home, [onclick*="posSet(0,0)"] {
                               position: fixed !important;
-                              top: max(8px, env(safe-area-inset-top)) !important;
-                              left: max(8px, env(safe-area-inset-left)) !important;
+                              top: 8px !important;
+                              right: 8px !important;
+                              left: auto !important; 
                               width: 26px !important;
                               height: 26px !important;
                               min-width: 26px !important;
                               min-height: 26px !important;
-                              max-width: 26px !important;
-                              max-height: 26px !important;
                               z-index: 2147483647 !important;
-                              margin: 0 !important;
-                              padding: 0 !important;
                               display: block !important;
-                              visibility: visible !important;
                               opacity: 0.85 !important;
                               transform: none !important;
-                              zoom: 1 !important;
-                              filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5)) !important;
                           }
 
-                          /* Windows rendered cleanly with consistent scaling */
+                          /* Make Windows Auto-Scale to fit their contents perfectly */
                           .window {
                               zoom: 0.88;
+                              height: fit-content !important;
+                              min-height: unset !important;
+                              max-height: 85vh !important;
+                              display: flex !important;
+                              flex-direction: column !important;
                           }
 
-                          .window-body, textarea, select {
+                          .window-body {
+                              height: auto !important;
+                              flex: 1 1 auto !important;
+                              overflow-y: auto !important;
                               touch-action: pan-y !important;
+                          }
+
+                          /* Fixed Gold Box HUD styling */
+                          #custom-ios-gold {
+                              position: fixed !important;
+                              top: 8px !important;
+                              left: 8px !important;
+                              background: #c0c0c0;
+                              border: 2px outset #ffffff;
+                              padding: 4px 10px;
+                              font-family: 'Pixelated MS Sans Serif', Arial, sans-serif;
+                              font-size: 16px;
+                              font-weight: bold;
+                              color: #000;
+                              z-index: 2147483647 !important;
+                              box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+                              pointer-events: none;
                           }
                       `;
                       document.head.appendChild(style);
 
-                      // 3. Apply Starting Gold (3,000,000) and Fire (2,000)
+                      // Inject the Fixed Gold Counter Box
+                      var goldBox = document.createElement('div');
+                      goldBox.id = 'custom-ios-gold';
+                      goldBox.innerText = 'Gold: 0';
+                      document.body.appendChild(goldBox);
+
+                      // Background loop to update Gold Counter continuously
+                      setInterval(function() {
+                          if (typeof game !== 'undefined' && game.gold && typeof format === 'function') {
+                              goldBox.innerText = 'Gold: ' + format(game.gold);
+                          }
+                      }, 100);
+
+                      // Starting Resources
                       function applyStartingResources(force) {
                           if (typeof game === 'undefined' || typeof ExpantaNum === 'undefined') {
                               setTimeout(function() { applyStartingResources(force); }, 100);
@@ -149,27 +172,18 @@ jobs:
                           }
                           var alreadyInitialized = localStorage.getItem('ios_starter_boost_applied');
                           if (force || !alreadyInitialized) {
-                              if (game.gold && game.gold.lt(3000000)) {
-                                  game.gold = new ExpantaNum(3000000);
-                              }
-                              if (game.fire && game.fire.lt(2000)) {
-                                  game.fire = new ExpantaNum(2000);
-                              }
-                              if (typeof game.unlocks !== 'undefined' && game.unlocks < 1) {
-                                  game.unlocks = 1;
-                              }
+                              if (game.gold && game.gold.lt(3000000)) game.gold = new ExpantaNum(3000000);
+                              if (game.fire && game.fire.lt(2000)) game.fire = new ExpantaNum(2000);
+                              if (typeof game.unlocks !== 'undefined' && game.unlocks < 1) game.unlocks = 1;
                               localStorage.setItem('ios_starter_boost_applied', 'true');
                               if (typeof save === 'function') save();
                           }
                       }
 
-                      // 4. Pinch-to-scale and single-finger camera pan
+                      // Camera Controller (Pinch to zoom + 1-finger pan)
                       var currentScale = 1.0;
-                      var startDist = 0;
-                      var startScale = 1.0;
-                      var isPanning = false;
-                      var lastX = 0, lastY = 0;
-                      var accumDX = 0, accumDY = 0;
+                      var startDist = 0, startScale = 1.0;
+                      var isPanning = false, lastX = 0, lastY = 0, accumDX = 0, accumDY = 0;
 
                       function applyWindowScale(scale) {
                           currentScale = Math.min(Math.max(scale, 0.45), 2.2);
@@ -184,9 +198,7 @@ jobs:
                       }
 
                       function getTouchDist(t1, t2) {
-                          var dx = t1.clientX - t2.clientX;
-                          var dy = t1.clientY - t2.clientY;
-                          return Math.hypot(dx, dy);
+                          return Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
                       }
 
                       document.addEventListener('touchstart', function(e) {
@@ -194,9 +206,7 @@ jobs:
                               isPanning = false;
                               startDist = getTouchDist(e.touches[0], e.touches[1]);
                               startScale = currentScale;
-                              return;
-                          }
-                          if (e.touches.length === 1) {
+                          } else if (e.touches.length === 1) {
                               var tag = e.target.tagName ? e.target.tagName.toLowerCase() : '';
                               if (tag === 'button' || tag === 'input' || tag === 'a' || tag === 'select' || e.target.onclick || e.target.closest('button')) {
                                   isPanning = false;
@@ -212,12 +222,8 @@ jobs:
 
                       document.addEventListener('touchmove', function(e) {
                           if (e.touches.length === 2 && startDist > 0) {
-                              var newDist = getTouchDist(e.touches[0], e.touches[1]);
-                              var ratio = newDist / startDist;
-                              applyWindowScale(startScale * ratio);
-                              return;
-                          }
-                          if (isPanning && e.touches.length === 1) {
+                              applyWindowScale(startScale * (getTouchDist(e.touches[0], e.touches[1]) / startDist));
+                          } else if (isPanning && e.touches.length === 1) {
                               var dx = e.touches[0].clientX - lastX;
                               var dy = e.touches[0].clientY - lastY;
                               lastX = e.touches[0].clientX;
@@ -256,11 +262,7 @@ jobs:
                   })();
                   """
 
-                  let userScript = WKUserScript(
-                      source: enhancementsScript,
-                      injectionTime: .atDocumentEnd,
-                      forMainFrameOnly: true
-                  )
+                  let userScript = WKUserScript(source: enhancementsScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
                   config.userContentController.addUserScript(userScript)
 
                   let webView = WKWebView(frame: screenBounds, configuration: config)
@@ -270,9 +272,9 @@ jobs:
                   webView.contentScaleFactor = UIScreen.main.scale
                   webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
                   webView.isOpaque = false
-                  webView.backgroundColor = UIColor(red: 0.13, green: 0.13, blue: 0.13, alpha: 1.0)
+                  webView.backgroundColor = .black // Shows through safe areas
 
-                  // Allow WebView to stretch edge-to-edge under the Dynamic Island
+                  // Disable scroll physics (handled entirely by custom panning)
                   webView.scrollView.contentInsetAdjustmentBehavior = .never
                   webView.scrollView.insetsLayoutMarginsFromSafeArea = false
                   webView.insetsLayoutMarginsFromSafeArea = false
@@ -294,15 +296,11 @@ jobs:
                   return true
               }
 
-              func viewForZooming(in scrollView: UIScrollView) -> UIView? {
-                  return nil
-              }
+              func viewForZooming(in scrollView: UIScrollView) -> UIView? { return nil }
 
               private func topViewController() -> UIViewController? {
                   var top = window?.rootViewController
-                  while let presented = top?.presentedViewController {
-                      top = presented
-                  }
+                  while let presented = top?.presentedViewController { top = presented }
                   return top
               }
 
@@ -321,27 +319,17 @@ jobs:
 
               func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
                   let alert = UIAlertController(title: prompt, message: nil, preferredStyle: .alert)
-                  alert.addTextField { textField in
-                      textField.text = defaultText
-                      textField.placeholder = "Paste save data..."
-                  }
+                  alert.addTextField { tf in tf.text = defaultText; tf.placeholder = "Paste save data..." }
                   alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(nil) })
-                  alert.addAction(UIAlertAction(title: "Import", style: .default) { _ in
-                      completionHandler(alert.textFields?.first?.text)
-                  })
+                  alert.addAction(UIAlertAction(title: "Import", style: .default) { _ in completionHandler(alert.textFields?.first?.text) })
                   topViewController()?.present(alert, animated: true)
               }
           }
 
-          UIApplicationMain(
-              CommandLine.argc,
-              CommandLine.unsafeArgv,
-              nil,
-              NSStringFromClass(AppDelegate.self)
-          )
+          UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil, NSStringFromClass(AppDelegate.self))
           EOF
 
-          # 2. Direct Swift compilation
+          # 2. Compile directly with Swiftc
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           xcrun --sdk iphoneos swiftc \
             -target arm64-apple-ios15.0 \
@@ -365,26 +353,18 @@ jobs:
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
-              <string>1.0.4</string>
+              <string>1.0.5</string>
               <key>CFBundleVersion</key>
-              <string>5</string>
+              <string>6</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
               <key>UIDeviceFamily</key>
-              <array>
-                  <integer>1</integer>
-                  <integer>2</integer>
-              </array>
-              <key>UILaunchScreen</key>
-              <dict/>
-              <key>UIRequiredDeviceCapabilities</key>
-              <array><string>arm64</string></array>
-              <key>UIRequiresFullScreen</key>
-              <true/>
-              <key>UIStatusBarHidden</key>
-              <true/>
-              <key>UIViewControllerBasedStatusBarAppearance</key>
-              <true/>
+              <array><integer>1</integer><integer>2</integer></array>
+              <key>UILaunchScreen</key><dict/>
+              <key>UIRequiredDeviceCapabilities</key><array><string>arm64</string></array>
+              <key>UIRequiresFullScreen</key><true/>
+              <key>UIStatusBarHidden</key><true/>
+              <key>UIViewControllerBasedStatusBarAppearance</key><true/>
               <key>UISupportedInterfaceOrientations</key>
               <array>
                   <string>UIInterfaceOrientationPortrait</string>
@@ -395,7 +375,7 @@ jobs:
           </plist>
           EOF
 
-          # 4. Sign binary for TrollStore/Jailbreak bypass
+          # 4. Sign binary
           brew install dpkg ldid
           ldid -S "$APP_DIR/DodecaDragons"
 
@@ -405,15 +385,15 @@ jobs:
           cat << 'EOF' > deb_root/DEBIAN/control
           Package: com.demonin.dodecadragons
           Name: DodecaDragons
-          Version: 1.0.4
+          Version: 1.0.5
           Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port - Notch Aware Top-Left Mini Home
+          Description: DodecaDragons native iOS port - True Notch Fix + Custom Gold HUD
           Maintainer: Demonin
           Author: Demonin
           Section: Games
           EOF
           chmod 755 deb_root/DEBIAN
-          dpkg-deb -Zxz --build deb_root DodecaDragons_1.0.4_iphoneos-arm64.deb
+          dpkg-deb -Zxz --build deb_root DodecaDragons_1.0.5_iphoneos-arm64.deb
 
           # 6. Package as .ipa
           mkdir -p Payload
@@ -425,5 +405,5 @@ jobs:
         with:
           name: DodecaDragons-Builds
           path: |
-            DodecaDragons_1.0.4_iphoneos-arm64.deb
+            DodecaDragons_1.0.5_iphoneos-arm64.deb
             DodecaDragons.ipa
