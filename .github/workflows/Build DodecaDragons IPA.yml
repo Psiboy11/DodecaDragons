@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build Notch-Proof App with Fixed HUD & Upper-Right Home
+      - name: Patch Game Source Code (Hardcode 300k Gold, 3k Fire & Root HUD)
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -20,15 +20,62 @@ jobs:
           # Copy web assets
           cp -r index.html style.css 98.css changelog.txt savebank.txt fonts img scripts "$APP_DIR/WebAssets/" 2>/dev/null || true
 
-          # Patch scripts directly for 300,000 starting gold & 3,000 fire
-          for f in "$APP_DIR/WebAssets/scripts/"*.js; do
-            if [ -f "$f" ]; then
-              sed -i '' 's/gold: new ExpantaNum(0)/gold: new ExpantaNum(300000)/g' "$f" 2>/dev/null || true
-              sed -i '' 's/gold:new ExpantaNum(0)/gold:new ExpantaNum(300000)/g' "$f" 2>/dev/null || true
-              sed -i '' 's/fire: new ExpantaNum(0)/fire: new ExpantaNum(3000)/g' "$f" 2>/dev/null || true
-              sed -i '' 's/fire:new ExpantaNum(0)/fire:new ExpantaNum(3000)/g' "$f" 2>/dev/null || true
-            fi
-          done
+          # Direct Python patch to guarantee initial resource state in JS files
+          python3 - << 'PYEOF'
+          import os, re
+
+          web_dir = "DodecaDragons.app/WebAssets"
+          scripts_dir = os.path.join(web_dir, "scripts")
+
+          # 1. Patch JavaScript game files
+          if os.path.exists(scripts_dir):
+              for root, _, files in os.walk(scripts_dir):
+                  for file in files:
+                      if file.endswith(".js"):
+                          path = os.path.join(root, file)
+                          with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                              content = f.read()
+
+                          # Replace gold and fire initializations
+                          content = re.sub(r'gold\s*:\s*new\s+ExpantaNum\(0\)', 'gold: new ExpantaNum(300000)', content)
+                          content = re.sub(r'fire\s*:\s*new\s+ExpantaNum\(0\)', 'fire: new ExpantaNum(3000)', content)
+                          content = re.sub(r'game\.gold\s*=\s*new\s+ExpantaNum\(0\)', 'game.gold = new ExpantaNum(300000)', content)
+                          content = re.sub(r'game\.fire\s*=\s*new\s+ExpantaNum\(0\)', 'game.fire = new ExpantaNum(3000)', content)
+
+                          with open(path, "w", encoding="utf-8") as f:
+                              f.write(content)
+
+          # 2. Inject starter save override directly into index.html
+          index_path = os.path.join(web_dir, "index.html")
+          if os.path.exists(index_path):
+              with open(index_path, "r", encoding="utf-8", errors="ignore") as f:
+                  html = f.read()
+
+              init_script = """
+              <script>
+              (function() {
+                  // Clear outdated empty saves so 300k gold & 3k fire take effect immediately
+                  try {
+                      var key = 'dodecaDragonsSave';
+                      var raw = localStorage.getItem(key);
+                      if (raw) {
+                          var saveObj = JSON.parse(atob(raw));
+                          if (!saveObj.gold || Number(saveObj.gold) < 300000) {
+                              localStorage.removeItem(key);
+                          }
+                      }
+                  } catch(e) {}
+              })();
+              </script>
+              """
+              html = html.replace("<head>", "<head>" + init_script)
+              with open(index_path, "w", encoding="utf-8") as f:
+                  f.write(html)
+          PYEOF
+
+      - name: Build Native Swift App, .deb, and .ipa
+        run: |
+          APP_DIR="DodecaDragons.app"
 
           # 1. Write Native Swift Source
           cat << 'EOF' > main.swift
@@ -57,6 +104,7 @@ jobs:
 
                   let enhancementsScript = """
                   (function() {
+                      // 1. Lock high-DPI viewport
                       var meta = document.querySelector('meta[name="viewport"]');
                       if (!meta) {
                           meta = document.createElement('meta');
@@ -65,6 +113,7 @@ jobs:
                       }
                       meta.content = 'width=1280, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
 
+                      // 2. Base CSS
                       var style = document.createElement('style');
                       style.textContent = `
                           html {
@@ -89,7 +138,7 @@ jobs:
                               touch-action: none !important;
                           }
 
-                          /* Hide original FPS and Navigation Arrows */
+                          /* Hide original FPS and navigation arrows */
                           #fps, .fps, [id*="fps" i],
                           #arrowUp, #arrowDown, #arrowLeft, #arrowRight,
                           img[src*="arrowUp"], img[src*="arrowDown"], img[src*="arrowLeft"], img[src*="arrowRight"] {
@@ -98,22 +147,46 @@ jobs:
                               pointer-events: none !important;
                           }
 
-                          /* Hide original in-game home elements to prevent duplicate ghost icons */
+                          /* Hide any original home buttons to prevent visual ghosting */
                           #home:not(#ios-fixed-home-btn), img#home:not(#ios-fixed-home-btn) {
                               display: none !important;
                           }
 
-                          /* Fixed Upper-Right Home Button */
+                          .window {
+                              zoom: 0.88;
+                          }
+
+                          .window-body, textarea, select {
+                              touch-action: pan-y !important;
+                          }
+
+                          /* UI Overlays attached to root HTML */
+                          #custom-ios-gold {
+                              position: fixed !important;
+                              top: max(10px, env(safe-area-inset-top)) !important;
+                              left: max(10px, env(safe-area-inset-left)) !important;
+                              background: #c0c0c0 !important;
+                              border: 2px outset #ffffff !important;
+                              padding: 4px 10px !important;
+                              font-family: 'Pixelated MS Sans Serif', Arial, sans-serif !important;
+                              font-size: 16px !important;
+                              font-weight: bold !important;
+                              color: #000000 !important;
+                              z-index: 2147483647 !important;
+                              box-shadow: 2px 2px 6px rgba(0,0,0,0.6) !important;
+                              pointer-events: none !important;
+                              display: block !important;
+                          }
+
                           #ios-fixed-home-btn {
                               position: fixed !important;
-                              top: 8px !important;
-                              right: 8px !important;
-                              width: 30px !important;
-                              height: 30px !important;
-                              background: #c0c0c0 url('img/home.png') no-repeat center center !important;
-                              background-size: 18px 18px !important;
+                              top: max(10px, env(safe-area-inset-top)) !important;
+                              right: max(10px, env(safe-area-inset-right)) !important;
+                              width: 34px !important;
+                              height: 34px !important;
+                              background: #c0c0c0 !important;
                               border: 2px outset #ffffff !important;
-                              box-shadow: 2px 2px 5px rgba(0,0,0,0.5) !important;
+                              box-shadow: 2px 2px 6px rgba(0,0,0,0.6) !important;
                               z-index: 2147483647 !important;
                               display: flex !important;
                               align-items: center !important;
@@ -125,78 +198,65 @@ jobs:
                           #ios-fixed-home-btn:active {
                               border: 2px inset #ffffff !important;
                           }
-
-                          .window {
-                              zoom: 0.88;
-                          }
-
-                          .window-body, textarea, select {
-                              touch-action: pan-y !important;
-                          }
-
-                          /* Fixed Gold Box HUD styling in UPPER LEFT */
-                          #custom-ios-gold {
-                              position: fixed !important;
-                              top: 8px !important;
-                              left: 8px !important;
-                              background: #c0c0c0;
-                              border: 2px outset #ffffff;
-                              padding: 4px 10px;
-                              font-family: 'Pixelated MS Sans Serif', Arial, sans-serif;
-                              font-size: 16px;
-                              font-weight: bold;
-                              color: #000;
-                              z-index: 2147483647 !important;
-                              box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
-                              pointer-events: none;
-                          }
                       `;
                       document.head.appendChild(style);
 
-                      // Inject the Fixed Gold Counter Box
-                      var goldBox = document.createElement('div');
-                      goldBox.id = 'custom-ios-gold';
-                      goldBox.innerText = 'Gold: 0';
-                      document.body.appendChild(goldBox);
+                      // 3. Inject Overlays directly into DocumentElement so body overflow cannot clip them
+                      function setupOverlays() {
+                          var root = document.documentElement || document.body;
 
-                      // Inject Dedicated Upper-Right Home Button
-                      var homeBtn = document.createElement('div');
-                      homeBtn.id = 'ios-fixed-home-btn';
-                      homeBtn.title = 'Home (0,0)';
-                      homeBtn.onclick = function(e) {
-                          e.stopPropagation();
-                          if (typeof posSet === 'function') {
-                              posSet(0, 0);
+                          if (!document.getElementById('custom-ios-gold')) {
+                              var goldBox = document.createElement('div');
+                              goldBox.id = 'custom-ios-gold';
+                              goldBox.innerText = 'Gold: 300K';
+                              root.appendChild(goldBox);
                           }
-                          if (typeof xPos !== 'undefined') xPos = 0;
-                          if (typeof yPos !== 'undefined') yPos = 0;
-                      };
-                      document.body.appendChild(homeBtn);
 
-                      // Loop to update Gold Counter continuously
-                      setInterval(function() {
-                          if (typeof game !== 'undefined' && game.gold && typeof format === 'function') {
-                              goldBox.innerText = 'Gold: ' + format(game.gold);
-                          }
-                      }, 100);
-
-                      // Starting Resources: 300,000 Gold & 3,000 Fire
-                      function applyStartingResources(force) {
-                          if (typeof game === 'undefined' || typeof ExpantaNum === 'undefined') {
-                              setTimeout(function() { applyStartingResources(force); }, 100);
-                              return;
-                          }
-                          var alreadyInitialized = localStorage.getItem('ios_starter_boost_applied_v2');
-                          if (force || !alreadyInitialized) {
-                              if (game.gold && game.gold.lt(300000)) game.gold = new ExpantaNum(300000);
-                              if (game.fire && game.fire.lt(3000)) game.fire = new ExpantaNum(3000);
-                              if (typeof game.unlocks !== 'undefined' && game.unlocks < 1) game.unlocks = 1;
-                              localStorage.setItem('ios_starter_boost_applied_v2', 'true');
-                              if (typeof save === 'function') save();
+                          if (!document.getElementById('ios-fixed-home-btn')) {
+                              var homeBtn = document.createElement('div');
+                              homeBtn.id = 'ios-fixed-home-btn';
+                              homeBtn.title = 'Home (0,0)';
+                              // Self-contained inline SVG home icon
+                              homeBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="#000"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>';
+                              homeBtn.onclick = function(e) {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (typeof posSet === 'function') {
+                                      posSet(0, 0);
+                                  }
+                                  if (typeof xPos !== 'undefined') xPos = 0;
+                                  if (typeof yPos !== 'undefined') yPos = 0;
+                              };
+                              root.appendChild(homeBtn);
                           }
                       }
 
-                      // Camera Controller (Pinch to zoom + 1-finger pan)
+                      setupOverlays();
+                      window.addEventListener('DOMContentLoaded', setupOverlays);
+                      window.addEventListener('load', setupOverlays);
+
+                      // 4. Force In-Memory State Updates
+                      function enforceState() {
+                          if (typeof game !== 'undefined' && typeof ExpantaNum !== 'undefined') {
+                              if (!game.gold || game.gold.lt(300000)) {
+                                  game.gold = new ExpantaNum(300000);
+                              }
+                              if (!game.fire || game.fire.lt(3000)) {
+                                  game.fire = new ExpantaNum(3000);
+                              }
+                              if (typeof game.unlocks !== 'undefined' && game.unlocks < 1) {
+                                  game.unlocks = 1;
+                              }
+                              var goldBox = document.getElementById('custom-ios-gold');
+                              if (goldBox && typeof format === 'function') {
+                                  goldBox.innerText = 'Gold: ' + format(game.gold);
+                              }
+                          }
+                      }
+
+                      setInterval(enforceState, 150);
+
+                      // 5. Camera Pan & Zoom Controller
                       var currentScale = 1.0;
                       var startDist = 0, startScale = 1.0;
                       var isPanning = false, lastX = 0, lastY = 0, accumDX = 0, accumDY = 0;
@@ -264,17 +324,6 @@ jobs:
                           if (e.touches.length < 2) startDist = 0;
                           if (e.touches.length === 0) isPanning = false;
                       }, { passive: true });
-
-                      window.addEventListener('load', function() {
-                          applyStartingResources(false);
-                          if (typeof window.reset === 'function') {
-                              var origReset = window.reset;
-                              window.reset = function() {
-                                  origReset.apply(this, arguments);
-                                  applyStartingResources(true);
-                              };
-                          }
-                      });
                   })();
                   """
 
@@ -344,7 +393,7 @@ jobs:
           UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil, NSStringFromClass(AppDelegate.self))
           EOF
 
-          # 2. Compile directly with Swiftc
+          # 2. Compile with Swiftc
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           xcrun --sdk iphoneos swiftc \
             -target arm64-apple-ios15.0 \
@@ -368,9 +417,9 @@ jobs:
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
-              <string>1.0.7</string>
+              <string>1.0.8</string>
               <key>CFBundleVersion</key>
-              <string>8</string>
+              <string>9</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
               <key>UIDeviceFamily</key>
@@ -400,15 +449,15 @@ jobs:
           cat << 'EOF' > deb_root/DEBIAN/control
           Package: com.demonin.dodecadragons
           Name: DodecaDragons
-          Version: 1.0.7
+          Version: 1.0.8
           Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port - Upper-Right Home & 300k Gold Start
+          Description: DodecaDragons native iOS port - Fixed Overlays & Source Patched Start
           Maintainer: Demonin
           Author: Demonin
           Section: Games
           EOF
           chmod 755 deb_root/DEBIAN
-          dpkg-deb -Zxz --build deb_root DodecaDragons_1.0.7_iphoneos-arm64.deb
+          dpkg-deb -Zxz --build deb_root DodecaDragons_1.0.8_iphoneos-arm64.deb
 
           # 6. Package as .ipa
           mkdir -p Payload
@@ -420,5 +469,5 @@ jobs:
         with:
           name: DodecaDragons-Builds
           path: |
-            DodecaDragons_1.0.7_iphoneos-arm64.deb
+            DodecaDragons_1.0.8_iphoneos-arm64.deb
             DodecaDragons.ipa
