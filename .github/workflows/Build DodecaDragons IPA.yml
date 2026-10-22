@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build Native Swift App with Window Navigation Menu, .deb, and .ipa
+      - name: Build Fullscreen Zoomable Native App, .deb, and .ipa
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -20,7 +20,7 @@ jobs:
           # Copy web assets
           cp -r index.html style.css 98.css changelog.txt savebank.txt fonts img scripts "$APP_DIR/WebAssets/" 2>/dev/null || true
 
-          # 1. Write Native Swift Source with Menu Structure, Touch Optimization & FPS removal
+          # 1. Write Native Swift Source
           cat << 'EOF' > main.swift
           import UIKit
           import WebKit
@@ -37,21 +37,22 @@ jobs:
                   config.websiteDataStore = .default()
                   config.preferences.javaScriptCanOpenWindowsAutomatically = true
 
-                  // Mobile Enhancements + Window Navigation Menu + FPS Counter Removal
+                  // Pinch-to-Scale, Fullscreen, Smaller Home, and Arrow Removal Script
                   let enhancementsScript = """
                   (function() {
-                      // 1. Mobile viewport scaling
-                      if (!document.querySelector('meta[name="viewport"]')) {
-                          var meta = document.createElement('meta');
+                      // 1. Enable Fullscreen & Pinch-to-Scale Viewport
+                      var meta = document.querySelector('meta[name="viewport"]');
+                      if (!meta) {
+                          meta = document.createElement('meta');
                           meta.name = 'viewport';
-                          meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
                           document.head.appendChild(meta);
                       }
+                      meta.content = 'width=device-width, initial-scale=1.0, minimum-scale=0.25, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover';
 
-                      // 2. CSS Styles for Mobile Window Menu Bar & FPS Counter Hiding
+                      // 2. CSS Injections: Hide FPS, Hide Nav Arrows, Scale Down Home Button
                       var style = document.createElement('style');
                       style.textContent = `
-                          /* Completely hide FPS counter */
+                          /* Hide FPS Counter completely */
                           #fps, .fps, [id*="fps" i] {
                               display: none !important;
                               visibility: hidden !important;
@@ -59,137 +60,40 @@ jobs:
                               pointer-events: none !important;
                           }
 
-                          /* Touch optimization & body spacing for native header */
-                          body {
-                              -webkit-touch-callout: none !important;
-                              -webkit-user-select: none !important;
-                              user-select: none !important;
-                              touch-action: manipulation;
-                              padding-top: calc(env(safe-area-inset-top) + 48px) !important;
-                              padding-bottom: env(safe-area-inset-bottom) !important;
-                              box-sizing: border-box;
+                          /* Remove Navigation Arrows */
+                          .nav-arrow, .arrow, [class*="nav-arrow" i], [id*="arrow" i], 
+                          button[id*="arrow" i], .scroll-arrow, .window-nav-arrow {
+                              display: none !important;
+                              visibility: hidden !important;
+                              pointer-events: none !important;
                           }
 
-                          input, textarea {
-                              -webkit-user-select: auto !important;
-                              user-select: auto !important;
+                          /* Make the Home Button smaller */
+                          #home, .home-btn, .home-button, [id*="home" i], button[title*="Home" i] {
+                              transform: scale(0.65) !important;
+                              transform-origin: top left !important;
+                              padding: 2px 4px !important;
+                              margin: 2px !important;
                           }
 
-                          /* Mobile Menu Header Bar */
-                          #mobile-nav-bar {
-                              position: fixed;
-                              top: 0;
-                              left: 0;
-                              right: 0;
-                              height: calc(env(safe-area-inset-top) + 44px);
-                              padding-top: env(safe-area-inset-top);
-                              background: #c0c0c0;
-                              border-bottom: 2px solid #808080;
-                              display: flex;
-                              align-items: center;
-                              padding-left: 8px;
-                              padding-right: 8px;
-                              z-index: 999999;
-                              box-sizing: border-box;
-                              box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-                              overflow-x: auto;
-                              white-space: nowrap;
-                              -webkit-overflow-scrolling: touch;
-                          }
-
-                          #mobile-nav-bar::-webkit-scrollbar {
-                              display: none;
-                          }
-
-                          .mobile-nav-btn {
-                              display: inline-block;
-                              padding: 4px 10px;
-                              margin-right: 6px;
-                              font-size: 13px;
-                              font-family: 'Pixelated MS Sans Serif', Arial, sans-serif;
-                              cursor: pointer;
-                              white-space: nowrap;
-                              flex-shrink: 0;
-                          }
-
-                          .mobile-nav-btn.active {
-                              font-weight: bold;
-                              background: #000080;
-                              color: #ffffff;
-                          }
-
-                          /* Smooth focus animation when switching windows */
-                          .window {
-                              scroll-margin-top: calc(env(safe-area-inset-top) + 54px);
-                              transition: box-shadow 0.2s ease-in-out;
-                          }
-
-                          .window-focused {
-                              box-shadow: 0 0 12px #ffff00 !important;
-                              z-index: 1000 !important;
+                          /* True Fullscreen layout with iOS safe area support */
+                          html, body {
+                              width: 100% !important;
+                              height: 100% !important;
+                              margin: 0 !important;
+                              padding: 0 !important;
+                              overflow: auto !important;
+                              -webkit-overflow-scrolling: touch !important;
+                              touch-action: pan-x pan-y pinch-zoom !important;
                           }
                       `;
                       document.head.appendChild(style);
 
-                      // 3. Inject Dynamic Window Menu Structure
-                      function setupWindowNavMenu() {
-                          if (document.getElementById('mobile-nav-bar')) return;
-
-                          var navBar = document.createElement('div');
-                          navBar.id = 'mobile-nav-bar';
-
-                          // Query all windows on screen
-                          var windows = document.querySelectorAll('.window');
-                          if (!windows || windows.length === 0) {
-                              setTimeout(setupWindowNavMenu, 500);
-                              return;
-                          }
-
-                          windows.forEach(function(win, idx) {
-                              var titleBar = win.querySelector('.title-bar-text') || win.querySelector('.title-bar') || win.querySelector('h1, h2, h3');
-                              var titleText = titleBar ? titleBar.innerText.trim() : ('Window ' + (idx + 1));
-                              if (!titleText) titleText = 'Tab ' + (idx + 1);
-
-                              var btn = document.createElement('button');
-                              btn.className = 'mobile-nav-btn';
-                              btn.innerText = titleText;
-
-                              btn.onclick = function() {
-                                  // Remove active styles
-                                  document.querySelectorAll('.mobile-nav-btn').forEach(b => b.classList.remove('active'));
-                                  document.querySelectorAll('.window').forEach(w => w.classList.remove('window-focused'));
-
-                                  btn.classList.add('active');
-                                  win.classList.add('window-focused');
-
-                                  // Scroll the selected window into view smoothly
-                                  win.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-                                  // If the window has display:none, unhide it
-                                  if (win.style.display === 'none') {
-                                      win.style.display = 'block';
-                                  }
-
-                                  setTimeout(function() {
-                                      win.classList.remove('window-focused');
-                                  }, 1500);
-                              };
-
-                              navBar.appendChild(btn);
-                          });
-
-                          document.body.appendChild(navBar);
-
-                          // Double check removing FPS element
-                          var fpsEl = document.getElementById('fps');
+                      // Redundant cleanup on DOM load
+                      window.addEventListener('DOMContentLoaded', () => {
+                          const fpsEl = document.getElementById('fps');
                           if (fpsEl) fpsEl.remove();
-                      }
-
-                      if (document.readyState === 'complete' || document.readyState === 'interactive') {
-                          setTimeout(setupWindowNavMenu, 300);
-                      } else {
-                          window.addEventListener('DOMContentLoaded', setupWindowNavMenu);
-                      }
+                      });
                   })();
                   """
 
@@ -206,7 +110,11 @@ jobs:
                   webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
                   webView.isOpaque = false
                   webView.backgroundColor = UIColor(red: 0.13, green: 0.13, blue: 0.13, alpha: 1.0)
+                  
+                  // Enable bouncing and scrolling
                   webView.scrollView.bounces = true
+                  webView.scrollView.alwaysBounceVertical = false
+                  webView.scrollView.alwaysBounceHorizontal = false
                   webView.scrollView.contentInsetAdjustmentBehavior = .never
 
                   let rootVC = UIViewController()
@@ -322,7 +230,7 @@ jobs:
           Name: DodecaDragons
           Version: 1.0.0
           Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port with Window Navigation
+          Description: DodecaDragons native iOS port - Zoomable Fullscreen
           Maintainer: Demonin
           Author: Demonin
           Section: Games
