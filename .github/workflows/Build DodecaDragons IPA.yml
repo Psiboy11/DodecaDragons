@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build Fullscreen Zoomable Native App, .deb, and .ipa
+      - name: Build Fullscreen Native App, .deb, and .ipa
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -37,21 +37,48 @@ jobs:
                   config.websiteDataStore = .default()
                   config.preferences.javaScriptCanOpenWindowsAutomatically = true
 
-                  // Pinch-to-Scale, Fullscreen, Smaller Home, and Arrow Removal Script
+                  // Fullscreen, Smaller Home Icon, and Scaled Windows Script
                   let enhancementsScript = """
                   (function() {
-                      // 1. Enable Fullscreen & Pinch-to-Scale Viewport
+                      // 1. Force Viewport to span edge-to-edge (viewport-fit=cover bypasses the notch)
                       var meta = document.querySelector('meta[name="viewport"]');
                       if (!meta) {
                           meta = document.createElement('meta');
-                          meta.name = 'viewport';
                           document.head.appendChild(meta);
                       }
+                      meta.name = 'viewport';
                       meta.content = 'width=device-width, initial-scale=1.0, minimum-scale=0.25, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover';
 
-                      // 2. CSS Injections: Hide FPS, Hide Nav Arrows, Scale Down Home Button
+                      // 2. CSS Injections
                       var style = document.createElement('style');
                       style.textContent = `
+                          /* True Edge-to-Edge Fullscreen */
+                          html, body {
+                              width: 100vw !important;
+                              height: 100vh !important;
+                              margin: 0 !important;
+                              padding: 0 !important;
+                              background-color: #c0c0c0 !important;
+                              overflow: auto !important;
+                              -webkit-overflow-scrolling: touch !important;
+                          }
+
+                          /* Make Windows slightly smaller (85%) */
+                          .window {
+                              zoom: 0.85 !important;
+                          }
+
+                          /* Pin Home Icon to top-left corner and scale down */
+                          img[src*="home" i], button:has(img[src*="home" i]), .home-btn, #homeBtn {
+                              position: fixed !important;
+                              top: max(15px, env(safe-area-inset-top)) !important;
+                              left: max(15px, env(safe-area-inset-left)) !important;
+                              zoom: 0.55 !important;
+                              z-index: 999999 !important;
+                              margin: 0 !important;
+                              box-shadow: 0 4px 8px rgba(0,0,0,0.3) !important;
+                          }
+
                           /* Hide FPS Counter completely */
                           #fps, .fps, [id*="fps" i] {
                               display: none !important;
@@ -66,25 +93,6 @@ jobs:
                               display: none !important;
                               visibility: hidden !important;
                               pointer-events: none !important;
-                          }
-
-                          /* Make the Home Button smaller */
-                          #home, .home-btn, .home-button, [id*="home" i], button[title*="Home" i] {
-                              transform: scale(0.65) !important;
-                              transform-origin: top left !important;
-                              padding: 2px 4px !important;
-                              margin: 2px !important;
-                          }
-
-                          /* True Fullscreen layout with iOS safe area support */
-                          html, body {
-                              width: 100% !important;
-                              height: 100% !important;
-                              margin: 0 !important;
-                              padding: 0 !important;
-                              overflow: auto !important;
-                              -webkit-overflow-scrolling: touch !important;
-                              touch-action: pan-x pan-y pinch-zoom !important;
                           }
                       `;
                       document.head.appendChild(style);
@@ -109,13 +117,14 @@ jobs:
                   webView.uiDelegate = self
                   webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
                   webView.isOpaque = false
-                  webView.backgroundColor = UIColor(red: 0.13, green: 0.13, blue: 0.13, alpha: 1.0)
+                  webView.backgroundColor = UIColor(red: 0.75, green: 0.75, blue: 0.75, alpha: 1.0)
                   
-                  // Enable bouncing and scrolling
+                  // Force scroll view to ignore safe area margins (Fills the screen on iPhone 15 Pro)
+                  webView.scrollView.contentInsetAdjustmentBehavior = .never
+                  webView.scrollView.insetsLayoutMarginsFromSafeArea = false
                   webView.scrollView.bounces = true
                   webView.scrollView.alwaysBounceVertical = false
                   webView.scrollView.alwaysBounceHorizontal = false
-                  webView.scrollView.contentInsetAdjustmentBehavior = .never
 
                   let rootVC = UIViewController()
                   rootVC.view = webView
@@ -230,7 +239,7 @@ jobs:
           Name: DodecaDragons
           Version: 1.0.0
           Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port - Zoomable Fullscreen
+          Description: DodecaDragons native iOS port - True Fullscreen
           Maintainer: Demonin
           Author: Demonin
           Section: Games
