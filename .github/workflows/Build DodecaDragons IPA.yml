@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build App with Unscaled Top Menu & Original Text Colors
+      - name: Build App with Fixed Top Menu Windows & Darker Blue Text
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -67,7 +67,7 @@ jobs:
 
                       var style = document.createElement('style');
                       style.textContent = `
-                          /* Keep html and body UNTRANSFORMED so fixed top menu items (Settings, etc.) NEVER scale with pinch */
+                          /* Keep html and body UNTRANSFORMED so fixed top menu items NEVER scale with pinch */
                           html, body {
                               position: fixed !important;
                               top: 0 !important;
@@ -87,7 +87,7 @@ jobs:
                               text-size-adjust: none !important;
                           }
 
-                          /* Board wrapper scales ONLY the game windows & background canvas as one unit */
+                          /* Board wrapper scales ONLY the map-bound game windows as one unit */
                           #ios-board-wrapper {
                               position: absolute !important;
                               top: 0 !important;
@@ -102,7 +102,6 @@ jobs:
                               pointer-events: auto !important;
                           }
 
-                          /* Ensure nested container divs inside #ios-board-wrapper match 100vw x 100vh so child windows never separate */
                           #ios-board-wrapper > div:not(.window) {
                               position: absolute !important;
                               top: 0 !important;
@@ -116,7 +115,7 @@ jobs:
                               pointer-events: auto !important;
                           }
 
-                          /* Clean normal-weight typography with original game text colors preserved */
+                          /* Clean normal-weight typography */
                           body, .window, .window-body, button, p, div, span, td, th {
                               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
                               font-weight: normal !important;
@@ -142,6 +141,24 @@ jobs:
                               line-height: 1.15 !important;
                               white-space: normal !important;
                               word-wrap: break-word !important;
+                          }
+
+                          /* Make blue text darker (#000075 deep navy blue) */
+                          [style*="color: blue" i],
+                          [style*="color:blue" i],
+                          [style*="color: #00f" i],
+                          [style*="color:#00f" i],
+                          [style*="color: #0000ff" i],
+                          [style*="color:#0000ff" i],
+                          [style*="color: rgb(0, 0, 255)" i],
+                          [style*="color: #0066ff" i],
+                          [style*="color: #0088ff" i],
+                          [style*="color: dodgerblue" i],
+                          [style*="color: royalblue" i],
+                          font[color="blue" i],
+                          font[color="#0000ff" i] {
+                              color: #000075 !important;
+                              font-weight: normal !important;
                           }
 
                           /* Hide FPS, Navigation Arrows, and original Home Icon */
@@ -172,17 +189,25 @@ jobs:
                               transform: none !important;
                               zoom: 1 !important;
                           }
+
+                          /* Any top menu item / window moved to body stays strictly fixed in place and unscaled */
+                          body > .ios-pinned-menu-item {
+                              position: fixed !important;
+                              z-index: 2147483645 !important;
+                              transform: none !important;
+                              zoom: 0.88 !important;
+                          }
                       `;
                       document.head.appendChild(style);
 
-                      // Inject Fixed Gold Counter directly on body (outside #ios-board-wrapper)
+                      // Inject Fixed Gold Counter directly on body
                       var goldBox = document.createElement('div');
                       goldBox.id = 'custom-ios-gold';
                       goldBox.innerText = 'Gold: 0';
                       document.body.appendChild(goldBox);
 
-                      // Separate Top Menu Items (Settings, Achievements, Info, etc.) from the scalable game board
-                      function organizeBoardAndTopMenu() {
+                      // Identify which windows/buttons are Fixed Top Menu items vs. Panning Board Windows
+                      function separateMenuFromBoard() {
                           var board = document.getElementById('ios-board-wrapper');
                           if (!board) {
                               board = document.createElement('div');
@@ -190,54 +215,88 @@ jobs:
                               document.body.appendChild(board);
                           }
 
-                          // Move initial body children into #ios-board-wrapper unless they are fixed top menu bars/buttons
-                          var children = Array.from(document.body.children);
-                          for (var i = 0; i < children.length; i++) {
-                              var el = children[i];
-                              if (el.id === 'ios-board-wrapper' || el.id === 'custom-ios-gold' || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') {
+                          // First move unmarked body elements into board wrapper
+                          var bodyChildren = Array.from(document.body.children);
+                          for (var i = 0; i < bodyChildren.length; i++) {
+                              var el = bodyChildren[i];
+                              if (
+                                  el.id === 'ios-board-wrapper' ||
+                                  el.id === 'custom-ios-gold' ||
+                                  el.classList.contains('ios-pinned-menu-item') ||
+                                  el.tagName === 'SCRIPT' ||
+                                  el.tagName === 'STYLE'
+                              ) {
                                   continue;
                               }
                               board.appendChild(el);
                           }
 
-                          // Inspect elements inside #ios-board-wrapper: any top menu bar / Settings button or modal that uses
-                          // fixed top coordinates (without calc(50%...)) belongs on the unscaled document.body!
-                          var allElements = Array.from(board.querySelectorAll('*'));
-                          for (var j = 0; j < allElements.length; j++) {
-                              var node = allElements[j];
-                              var inlineStyle = node.getAttribute('style') || '';
+                          // In DodecaDragons, map-panning windows use inline `left: calc(50% ...)` / `top: calc(50% ...)`.
+                          // Top menu items/icons/windows (Settings, Achievements, Info, etc.) are positioned relative to
+                          // the top/right/left edges of the screen (without calc(50%)) or have fixed top bar IDs.
+                          var candidates = Array.from(board.querySelectorAll('.window, img, button, div'));
+                          for (var j = 0; j < candidates.length; j++) {
+                              var node = candidates[j];
+                              if (node.parentElement !== board && !node.classList.contains('window')) continue;
+
+                              var idLower = (node.id || '').toLowerCase();
+                              var classLower = (node.className || '').toLowerCase();
+                              var styleAttr = (node.getAttribute('style') || '').toLowerCase();
                               var comp = window.getComputedStyle(node);
 
-                              // Top menu items in DodecaDragons are position:fixed at top:0 / top:Xpx (not calc(50%...))
-                              // or have IDs/classes for settings/menu/tabs
-                              var isFixedTopMenu = (
+                              var isNamedMenu = (
+                                  idLower.indexOf('setting') !== -1 ||
+                                  idLower.indexOf('option') !== -1 ||
+                                  idLower.indexOf('achieve') !== -1 ||
+                                  idLower.indexOf('info') !== -1 ||
+                                  idLower.indexOf('changelog') !== -1 ||
+                                  idLower.indexOf('discord') !== -1 ||
+                                  idLower.indexOf('topbar') !== -1 ||
+                                  idLower.indexOf('menu') !== -1 ||
+                                  classLower.indexOf('topbar') !== -1 ||
+                                  classLower.indexOf('menubutton') !== -1 ||
+                                  classLower.indexOf('clickbutton') !== -1
+                              );
+
+                              // Also catch any fixed element anchored near the top edge that doesn't use calc(50%...) map coordinates
+                              var rect = node.getBoundingClientRect();
+                              var isTopEdgeFixed = (
                                   comp.position === 'fixed' &&
-                                  inlineStyle.indexOf('calc(50%') === -1 &&
-                                  comp.top !== 'auto' &&
-                                  parseFloat(comp.top) <= 60 &&
-                                  !node.classList.contains('window')
+                                  styleAttr.indexOf('calc(50%') === -1 &&
+                                  rect.top >= 0 && rect.top <= 70 &&
+                                  rect.height > 0 && rect.height < 120
                               );
 
-                              var isMenuWindowOrBar = (
-                                  node.id === 'topBar' ||
-                                  node.id === 'menu' ||
-                                  node.id === 'settings' ||
-                                  node.classList.contains('topBar') ||
-                                  node.classList.contains('menuButton')
-                              );
-
-                              if (isFixedTopMenu || isMenuWindowOrBar) {
-                                  node.style.setProperty('z-index', '2147483646', 'important');
+                              if (isNamedMenu || isTopEdgeFixed) {
+                                  node.classList.add('ios-pinned-menu-item');
                                   document.body.appendChild(node);
                               }
                           }
                       }
 
                       if (document.readyState === 'loading') {
-                          document.addEventListener('DOMContentLoaded', organizeBoardAndTopMenu);
+                          document.addEventListener('DOMContentLoaded', separateMenuFromBoard);
                       } else {
-                          organizeBoardAndTopMenu();
+                          separateMenuFromBoard();
                       }
+
+                      // Darken any computed bright blue text inside windows to #000075
+                      function darkenBlueText() {
+                          var elements = document.querySelectorAll('.window-body span, .window-body p, .window-body div, .window-body b, .window-body button, .window-body font');
+                          for (var i = 0; i < elements.length; i++) {
+                              var el = elements[i];
+                              var c = window.getComputedStyle(el).color;
+                              var m = c.match(/rgb\\((\\d+),\\s*(\\d+),\\s*(\\d+)\\)/);
+                              if (m) {
+                                  var r = parseInt(m[1], 10), g = parseInt(m[2], 10), b = parseInt(m[3], 10);
+                                  if (r < 60 && g < 100 && b > 160) {
+                                      el.style.setProperty('color', '#000075', 'important');
+                                      el.style.setProperty('font-weight', 'normal', 'important');
+                                  }
+                              }
+                          }
+                      }
+                      setInterval(darkenBlueText, 600);
 
                       setInterval(function() {
                           if (typeof game !== 'undefined' && game.gold && typeof format === 'function') {
@@ -312,7 +371,7 @@ jobs:
                               startScale = currentScale;
                           } else if (e.touches.length === 1) {
                               var tag = e.target.tagName ? e.target.tagName.toLowerCase() : '';
-                              if (tag === 'button' || tag === 'input' || tag === 'a' || tag === 'select' || e.target.onclick || e.target.closest('button')) {
+                              if (tag === 'button' || tag === 'input' || tag === 'a' || tag === 'select' || e.target.onclick || e.target.closest('button') || e.target.closest('.ios-pinned-menu-item')) {
                                   isPanning = false;
                                   return;
                               }
@@ -355,8 +414,10 @@ jobs:
                       }, { passive: true });
 
                       window.addEventListener('load', function() {
-                          organizeBoardAndTopMenu();
+                          separateMenuFromBoard();
+                          setTimeout(separateMenuFromBoard, 300);
                           applyStartingResources(false);
+                          darkenBlueText();
                           if (typeof window.reset === 'function') {
                               var origReset = window.reset;
                               window.reset = function() {
@@ -458,9 +519,9 @@ jobs:
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
-              <string>1.1.7</string>
+              <string>1.1.8</string>
               <key>CFBundleVersion</key>
-              <string>18</string>
+              <string>19</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
               <key>UIDeviceFamily</key>
@@ -490,15 +551,15 @@ jobs:
           cat << 'EOF' > deb_root/DEBIAN/control
           Package: com.demonin.dodecadragons
           Name: DodecaDragons
-          Version: 1.1.7
+          Version: 1.1.8
           Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port - Unscaled Top Menu & Reverted Text Colors
+          Description: DodecaDragons native iOS port - Fixed Menu Windows & Darker Blue Text
           Maintainer: Demonin
           Author: Demonin
           Section: Games
           EOF
           chmod 755 deb_root/DEBIAN
-          dpkg-deb -Zxz --build deb_root DodecaDragons_1.1.7_iphoneos-arm64.deb
+          dpkg-deb -Zxz --build deb_root DodecaDragons_1.1.8_iphoneos-arm64.deb
 
           # 6. Package as .ipa
           mkdir -p Payload
@@ -510,5 +571,5 @@ jobs:
         with:
           name: DodecaDragons-Builds
           path: |
-            DodecaDragons_1.1.7_iphoneos-arm64.deb
+            DodecaDragons_1.1.8_iphoneos-arm64.deb
             DodecaDragons.ipa
