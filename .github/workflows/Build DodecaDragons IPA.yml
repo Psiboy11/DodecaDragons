@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build Exact-Layout Board Scaling App with Zoom Reset
+      - name: Build Exact-Position App with Black Normal-Weight Text
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -67,81 +67,68 @@ jobs:
 
                       var style = document.createElement('style');
                       style.textContent = `
-                          html {
-                              background-color: #000 !important;
-                              overflow: hidden !important;
-                              -webkit-text-size-adjust: none !important;
-                              text-size-adjust: none !important;
-                          }
-
-                          body {
+                          /* Keep html and body at exact 100vw x 100vh so CSS 50% and JS window.innerWidth/2 match 1:1 */
+                          html, body {
                               position: fixed !important;
-                              top: env(safe-area-inset-top) !important;
-                              left: env(safe-area-inset-left) !important;
-                              right: env(safe-area-inset-right) !important;
-                              bottom: env(safe-area-inset-bottom) !important;
-                              width: auto !important;
-                              height: auto !important;
+                              top: 0 !important;
+                              left: 0 !important;
+                              width: 100vw !important;
+                              height: 100vh !important;
                               margin: 0 !important;
                               padding: 0 !important;
                               overflow: hidden !important;
-                              background-color: #1a1a1a !important; 
+                              background-color: #1a1a1a !important;
                               -webkit-user-select: none !important;
                               user-select: none !important;
                               touch-action: none !important;
                               -webkit-font-smoothing: antialiased !important;
                               -webkit-text-size-adjust: none !important;
+                              text-size-adjust: none !important;
                           }
 
-                          /* Master Board Container: Scales all windows together as ONE unit from the center */
+                          /* Master Board Container: Exact 100vw x 100vh so every window's original coordinates are preserved */
                           #ios-board-wrapper {
                               position: absolute !important;
                               top: 0 !important;
                               left: 0 !important;
-                              width: 100% !important;
-                              height: 100% !important;
+                              width: 100vw !important;
+                              height: 100vh !important;
                               transform-origin: 50% 50% !important;
                               transform: scale(0.88);
                               pointer-events: auto !important;
                           }
 
-                          /* Keep individual windows at 100% native coordinates so relative positions NEVER shift */
-                          .window {
-                              zoom: 1 !important;
-                              transform: none !important;
-                          }
+                          /* DO NOT override .window transform or zoom - let DodecaDragons style.css position every window natively */
 
-                          /* Crisp typography that fits original window boxes without overflowing */
+                          /* Clean normal-weight typography (no forced bolding) */
                           body, .window, .window-body, button, p, div, span, td, th {
                               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+                              font-weight: normal !important;
                               -webkit-text-size-adjust: none !important;
                               text-size-adjust: none !important;
-                              box-sizing: border-box !important;
                           }
 
                           .title-bar-text {
-                              font-weight: 700 !important;
                               font-size: 12px !important;
+                              font-weight: normal !important;
                           }
 
                           .window-body {
                               font-size: 11.5px !important;
                               line-height: 1.2 !important;
-                              word-wrap: break-word !important;
-                              overflow-wrap: break-word !important;
+                              font-weight: normal !important;
                               touch-action: pan-y !important;
                           }
 
                           .window button {
                               font-size: 11px !important;
-                              font-weight: 600 !important;
+                              font-weight: normal !important;
                               line-height: 1.15 !important;
                               white-space: normal !important;
                               word-wrap: break-word !important;
-                              padding: 3px 5px !important;
                           }
 
-                          /* High-contrast Sky Cyan for blue text on purple/dark backgrounds */
+                          /* Change blue text to BLACK with normal (non-bold) font weight */
                           [style*="color: blue" i],
                           [style*="color:blue" i],
                           [style*="color: #00f" i],
@@ -155,9 +142,9 @@ jobs:
                           [style*="color: navy" i],
                           font[color="blue" i],
                           font[color="#0000ff" i] {
-                              color: #66e8ff !important;
-                              text-shadow: 0px 1px 2px rgba(0, 0, 0, 0.95), 0px 0px 3px rgba(0, 0, 0, 0.8) !important;
-                              font-weight: 700 !important;
+                              color: #000000 !important;
+                              text-shadow: none !important;
+                              font-weight: normal !important;
                           }
 
                           /* Hide original FPS, Navigation Arrows, and original Home Icon */
@@ -170,18 +157,18 @@ jobs:
                               pointer-events: none !important;
                           }
 
-                          /* Fixed Gold Box HUD styling in top-left (Outside the scaled board wrapper) */
+                          /* Fixed Gold Box HUD in top-left with notch-safe inset and normal font weight */
                           #custom-ios-gold {
                               position: fixed !important;
-                              top: 8px !important;
-                              left: 8px !important;
+                              top: max(10px, env(safe-area-inset-top)) !important;
+                              left: max(10px, env(safe-area-inset-left)) !important;
                               background: #c0c0c0;
                               border: 2px outset #ffffff;
                               padding: 4px 10px;
                               font-family: -apple-system, BlinkMacSystemFont, sans-serif !important;
                               font-size: 15px;
-                              font-weight: 700;
-                              color: #000;
+                              font-weight: normal !important;
+                              color: #000000;
                               z-index: 2147483647 !important;
                               box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
                               pointer-events: none;
@@ -189,7 +176,7 @@ jobs:
                       `;
                       document.head.appendChild(style);
 
-                      // Wrap all game windows inside #ios-board-wrapper so they scale together as a single rigid board
+                      // Wrap all game windows inside #ios-board-wrapper without altering their relative DOM hierarchy
                       function setupBoardWrapper() {
                           if (document.getElementById('ios-board-wrapper')) return;
                           var board = document.createElement('div');
@@ -210,7 +197,7 @@ jobs:
                           setupBoardWrapper();
                       }
 
-                      // Inject the Fixed Gold Counter Box directly on body (stays unscaled in top-left)
+                      // Inject the Fixed Gold Counter Box directly on body
                       var goldBox = document.createElement('div');
                       goldBox.id = 'custom-ios-gold';
                       goldBox.innerText = 'Gold: 0';
@@ -222,7 +209,8 @@ jobs:
                           }
                       }, 100);
 
-                      function brightenBlueText() {
+                      // Convert any class-based or inline blue text inside windows to black, non-bold
+                      function convertBlueTextToBlack() {
                           var elements = document.querySelectorAll('.window-body span, .window-body p, .window-body div, .window-body b, .window-body button');
                           for (var i = 0; i < elements.length; i++) {
                               var el = elements[i];
@@ -231,13 +219,14 @@ jobs:
                               if (m) {
                                   var r = parseInt(m[1], 10), g = parseInt(m[2], 10), b = parseInt(m[3], 10);
                                   if (r < 50 && g < 85 && b > 120) {
-                                      el.style.setProperty('color', '#66e8ff', 'important');
-                                      el.style.setProperty('text-shadow', '0px 1px 2px rgba(0,0,0,0.95)', 'important');
+                                      el.style.setProperty('color', '#000000', 'important');
+                                      el.style.setProperty('font-weight', 'normal', 'important');
+                                      el.style.setProperty('text-shadow', 'none', 'important');
                                   }
                               }
                           }
                       }
-                      setInterval(brightenBlueText, 800);
+                      setInterval(convertBlueTextToBlack, 800);
 
                       // Starting Resources
                       function applyStartingResources(force) {
@@ -255,7 +244,7 @@ jobs:
                           }
                       }
 
-                      // Camera Controller: Scales #ios-board-wrapper as one solid unit so window layout never warps
+                      // Camera Controller: Scales #ios-board-wrapper as one solid unit
                       var currentScale = 1.0;
                       var startDist = 0, startScale = 1.0;
                       var isPanning = false, lastX = 0, lastY = 0, accumDX = 0, accumDY = 0;
@@ -351,7 +340,7 @@ jobs:
                       window.addEventListener('load', function() {
                           setupBoardWrapper();
                           applyStartingResources(false);
-                          brightenBlueText();
+                          convertBlueTextToBlack();
                           if (typeof window.reset === 'function') {
                               var origReset = window.reset;
                               window.reset = function() {
@@ -453,9 +442,9 @@ jobs:
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
-              <string>1.1.3</string>
+              <string>1.1.4</string>
               <key>CFBundleVersion</key>
-              <string>14</string>
+              <string>15</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
               <key>UIDeviceFamily</key>
@@ -485,15 +474,15 @@ jobs:
           cat << 'EOF' > deb_root/DEBIAN/control
           Package: com.demonin.dodecadragons
           Name: DodecaDragons
-          Version: 1.1.3
+          Version: 1.1.4
           Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port - Top-Right Double-Tap Zoom & Camera Reset
+          Description: DodecaDragons native iOS port - Exact Window Positions & Black Normal Text
           Maintainer: Demonin
           Author: Demonin
           Section: Games
           EOF
           chmod 755 deb_root/DEBIAN
-          dpkg-deb -Zxz --build deb_root DodecaDragons_1.1.3_iphoneos-arm64.deb
+          dpkg-deb -Zxz --build deb_root DodecaDragons_1.1.4_iphoneos-arm64.deb
 
           # 6. Package as .ipa
           mkdir -p Payload
@@ -505,5 +494,5 @@ jobs:
         with:
           name: DodecaDragons-Builds
           path: |
-            DodecaDragons_1.1.3_iphoneos-arm64.deb
+            DodecaDragons_1.1.4_iphoneos-arm64.deb
             DodecaDragons.ipa
