@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build App with Fixed Top Menu & Original Pixel Font
+      - name: Build App with Notch-Aligned Gold & Resources Window
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -65,6 +65,21 @@ jobs:
                       }
                       meta.content = 'width=1280, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
 
+                      // Preserve exact original DOM collection order for .box and .window so moving the Resources
+                      // window never shifts DodecaDragons' internal tab indices
+                      var cachedBoxes = null;
+                      var cachedWindows = null;
+                      var origGetByClass = document.getElementsByClassName.bind(document);
+                      document.getElementsByClassName = function(name) {
+                          if ((name === 'box' || name === 'window box' || name === 'box window') && cachedBoxes && cachedBoxes.length > 0) {
+                              return cachedBoxes;
+                          }
+                          if (name === 'window' && cachedWindows && cachedWindows.length > 0) {
+                              return cachedWindows;
+                          }
+                          return origGetByClass(name);
+                      };
+
                       var style = document.createElement('style');
                       style.textContent = `
                           html, body {
@@ -85,7 +100,7 @@ jobs:
                               text-size-adjust: none !important;
                           }
 
-                          /* Scaling board wrapper for windows (Preserves original pixel font rendering) */
+                          /* Scaling board wrapper for game windows (Preserves original pixel font) */
                           #ios-board-wrapper {
                               position: absolute !important;
                               top: 0 !important;
@@ -113,7 +128,17 @@ jobs:
                               pointer-events: auto !important;
                           }
 
-                          /* Standard Blue Text Forced to Black */
+                          /* Force ALL clickable text (buttons, disabled/unaffordable buttons, links, clickable rows) to solid BLACK */
+                          button,
+                          button:disabled,
+                          button[disabled],
+                          button:active,
+                          button:hover,
+                          button:focus,
+                          button *,
+                          a, a:link, a:visited, a:hover, a:active, a *,
+                          [onclick]:not(.window),
+                          [onclick]:not(.window) *,
                           [style*="color: blue" i],
                           [style*="color:blue" i],
                           [style*="color: #00f" i],
@@ -124,30 +149,40 @@ jobs:
                           font[color="blue" i],
                           font[color="#0000ff" i] {
                               color: #000000 !important;
-                              font-weight: normal !important;
+                              -webkit-text-fill-color: #000000 !important;
                               text-shadow: none !important;
                           }
 
-                          /* Hide FPS and Nav Arrows */
+                          /* Keep window title bar text white as in original UI */
+                          .title-bar-text {
+                              color: #ffffff !important;
+                              -webkit-text-fill-color: #ffffff !important;
+                          }
+
+                          /* Hide FPS, Navigation Arrows, Visible Home Button, and Achievement Unlocked Box */
                           #fps, .fps, [id*="fps" i],
                           #arrowUp, #arrowDown, #arrowLeft, #arrowRight,
-                          img[src*="arrowUp"], img[src*="arrowDown"], img[src*="arrowLeft"], img[src*="arrowRight"] {
+                          img[src*="arrowUp"], img[src*="arrowDown"], img[src*="arrowLeft"], img[src*="arrowRight"],
+                          #home, img#home, img[src*="home" i], [onclick*="posSet(0,0)"], #ios-fixed-home-btn,
+                          .ios-hidden-achievement-box {
                               display: none !important;
                               visibility: hidden !important;
+                              opacity: 0 !important;
                               pointer-events: none !important;
                           }
 
-                          /* Top-Left Menu Container (Fixed outside the scaled board) */
+                          /* Top-Left Menu Bars (Resources, Settings, Achievements, Info/credits) fixed BELOW the notch height */
                           #ios-fixed-top-menu {
                               position: fixed !important;
-                              top: max(8px, env(safe-area-inset-top)) !important;
-                              left: max(8px, env(safe-area-inset-left)) !important;
+                              top: max(52px, calc(env(safe-area-inset-top, 48px) + 4px)) !important;
+                              left: max(6px, env(safe-area-inset-left, 6px)) !important;
                               z-index: 2147483647 !important;
                               display: flex !important;
                               flex-wrap: wrap !important;
                               gap: 4px !important;
-                              width: 250px !important;
+                              width: 260px !important;
                               pointer-events: none !important;
+                              transform: none !important;
                           }
 
                           #ios-fixed-top-menu > button {
@@ -155,25 +190,40 @@ jobs:
                               margin: 0 !important;
                           }
 
-                          /* Small Top-Right Gold Counter */
+                          /* Gold Counter directly to the LEFT of the notch at the notch's exact vertical height */
                           #custom-ios-gold {
                               position: fixed !important;
-                              top: max(8px, env(safe-area-inset-top)) !important;
-                              right: max(8px, env(safe-area-inset-right)) !important;
+                              top: 12px !important;
+                              right: calc(50% + 210px) !important;
+                              left: auto !important;
                               background: #c0c0c0 !important;
                               border: 2px outset #ffffff !important;
-                              padding: 2px 4px !important;
-                              font-size: 10px !important;
+                              padding: 3px 6px !important;
+                              font-size: 11px !important;
                               font-weight: normal !important;
                               color: #000000 !important;
                               z-index: 2147483647 !important;
                               box-shadow: 2px 2px 5px rgba(0,0,0,0.5) !important;
                               pointer-events: none !important;
+                              white-space: nowrap !important;
+                              transform: none !important;
+                          }
+
+                          /* Resources Window fixed in place to the RIGHT of the notch */
+                          .ios-fixed-resources-window {
+                              position: fixed !important;
+                              top: 12px !important;
+                              left: calc(50% + 210px) !important;
+                              right: auto !important;
+                              transform: none !important;
+                              zoom: 1 !important;
+                              z-index: 2147483646 !important;
+                              pointer-events: auto !important;
                           }
                       `;
                       document.head.appendChild(style);
 
-                      // Create Unscaled UI Overlays on document.documentElement
+                      // Create Unscaled Root Overlays on document.documentElement
                       var topMenuContainer = document.createElement('div');
                       topMenuContainer.id = 'ios-fixed-top-menu';
                       document.documentElement.appendChild(topMenuContainer);
@@ -183,8 +233,16 @@ jobs:
                       goldBox.innerText = 'Gold: 0';
                       document.documentElement.appendChild(goldBox);
 
-                      // Move board elements & pin top menu buttons
                       function organizeDOM() {
+                          if (!cachedBoxes) {
+                              var b = origGetByClass('box');
+                              if (b && b.length > 0) cachedBoxes = Array.from(b);
+                          }
+                          if (!cachedWindows) {
+                              var w = origGetByClass('window');
+                              if (w && w.length > 0) cachedWindows = Array.from(w);
+                          }
+
                           var board = document.getElementById('ios-board-wrapper');
                           if (!board) {
                               board = document.createElement('div');
@@ -192,21 +250,48 @@ jobs:
                               document.body.appendChild(board);
                           }
 
-                          // 1. Move all body content into the scaling board
+                          // 1. Move body children into the scaling board
                           var bodyChildren = Array.from(document.body.children);
                           for (var i = 0; i < bodyChildren.length; i++) {
                               var el = bodyChildren[i];
-                              if (el.id === 'ios-board-wrapper' || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
+                              if (
+                                  el.id === 'ios-board-wrapper' ||
+                                  el.classList.contains('ios-fixed-resources-window') ||
+                                  el.tagName === 'SCRIPT' ||
+                                  el.tagName === 'STYLE'
+                              ) {
+                                  continue;
+                              }
                               board.appendChild(el);
                           }
 
-                          // 2. Extract specific loose top buttons and put them in the fixed top-left menu
+                          // 2. Put top menu buttons (Resources, Settings, Achievements, Info/credits) into the fixed top-left container
                           var looseButtons = Array.from(board.querySelectorAll('button'));
                           for (var j = 0; j < looseButtons.length; j++) {
                               var btn = looseButtons[j];
-                              // Only target buttons that are NOT inside a .window container
                               if (!btn.closest('.window') && btn.parentElement !== topMenuContainer) {
                                   topMenuContainer.appendChild(btn);
+                              }
+                          }
+
+                          // 3. Locate the "Resources" window and the "Achievement unlocked!" box
+                          var allWindows = cachedWindows || Array.from(document.querySelectorAll('.window'));
+                          for (var k = 0; k < allWindows.length; k++) {
+                              var win = allWindows[k];
+                              var titleEl = win.querySelector('.title-bar-text');
+                              var titleText = titleEl ? (titleEl.textContent || '').trim().toLowerCase() : '';
+
+                              // Fix the "Resources" window to the right of the notch (outside #ios-board-wrapper)
+                              if (titleText === 'resources') {
+                                  win.classList.add('ios-fixed-resources-window');
+                                  if (win.parentElement !== document.body) {
+                                      document.body.appendChild(win);
+                                  }
+                              }
+
+                              // Completely remove/hide the "Achievement unlocked!" popup box
+                              if (titleText.indexOf('achievement unlocked') !== -1) {
+                                  win.classList.add('ios-hidden-achievement-box');
                               }
                           }
                       }
@@ -217,32 +302,42 @@ jobs:
                           organizeDOM();
                       }
 
-                      // Gold Updater
+                      // Update Gold Counter & ensure clickable/blue text stays black
                       setInterval(function() {
                           if (typeof game !== 'undefined' && game.gold && typeof format === 'function') {
                               goldBox.innerText = 'Gold: ' + format(game.gold);
                           }
                       }, 100);
 
-                      // Convert inline blue text to black without bolding
-                      function darkenBlueText() {
-                          var elements = document.querySelectorAll('.window-body span, .window-body p, .window-body div, .window-body b, .window-body button, .window-body font');
+                      function enforceBlackClickableText() {
+                          var elements = document.querySelectorAll('button, button *, a, a *, [onclick]:not(.window), .window-body span, .window-body p, .window-body b, .window-body font');
                           for (var i = 0; i < elements.length; i++) {
                               var el = elements[i];
+                              if (el.classList && el.classList.contains('title-bar-text')) continue;
+                              if (el.closest && el.closest('.title-bar')) continue;
+
+                              var tag = el.tagName ? el.tagName.toLowerCase() : '';
+                              if (tag === 'button' || tag === 'a' || el.closest('button') || el.closest('a') || el.hasAttribute('onclick')) {
+                                  el.style.setProperty('color', '#000000', 'important');
+                                  el.style.setProperty('-webkit-text-fill-color', '#000000', 'important');
+                                  el.style.setProperty('text-shadow', 'none', 'important');
+                                  continue;
+                              }
+
                               var c = window.getComputedStyle(el).color;
                               var m = c.match(/rgb\\((\\d+),\\s*(\\d+),\\s*(\\d+)\\)/);
                               if (m) {
                                   var r = parseInt(m[1], 10), g = parseInt(m[2], 10), b = parseInt(m[3], 10);
                                   if (b > 150 && r < 100 && g < 100) {
                                       el.style.setProperty('color', '#000000', 'important');
-                                      el.style.setProperty('font-weight', 'normal', 'important');
+                                      el.style.setProperty('text-shadow', 'none', 'important');
                                   }
                               }
                           }
                       }
-                      setInterval(darkenBlueText, 500);
+                      setInterval(enforceBlackClickableText, 400);
 
-                      // Offline Progress / Start Boost
+                      // Starting Resources
                       function applyStartingResources(force) {
                           if (typeof game === 'undefined' || typeof ExpantaNum === 'undefined') {
                               setTimeout(function() { applyStartingResources(force); }, 100);
@@ -276,7 +371,7 @@ jobs:
                           return Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
                       }
 
-                      // Double-Tap Top Right to Reset
+                      // Invisible Top-Right Double-Tap to Reset Camera & Zoom
                       var lastTopRightTapTime = 0;
                       document.addEventListener('touchend', function(e) {
                           var touch = e.changedTouches && e.changedTouches[0];
@@ -302,7 +397,16 @@ jobs:
                               startScale = currentScale;
                           } else if (e.touches.length === 1) {
                               var tag = e.target.tagName ? e.target.tagName.toLowerCase() : '';
-                              if (tag === 'button' || tag === 'input' || tag === 'a' || tag === 'select' || e.target.onclick || e.target.closest('button') || e.target.closest('#ios-fixed-top-menu')) {
+                              if (
+                                  tag === 'button' ||
+                                  tag === 'input' ||
+                                  tag === 'a' ||
+                                  tag === 'select' ||
+                                  e.target.onclick ||
+                                  e.target.closest('button') ||
+                                  e.target.closest('#ios-fixed-top-menu') ||
+                                  e.target.closest('.ios-fixed-resources-window')
+                              ) {
                                   isPanning = false;
                                   return;
                               }
@@ -355,7 +459,7 @@ jobs:
                           organizeDOM();
                           setTimeout(organizeDOM, 300);
                           applyStartingResources(false);
-                          darkenBlueText();
+                          enforceBlackClickableText();
                           if (typeof window.reset === 'function') {
                               var origReset = window.reset;
                               window.reset = function() {
@@ -465,9 +569,9 @@ jobs:
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
-              <string>1.2.1</string>
+              <string>1.2.2</string>
               <key>CFBundleVersion</key>
-              <string>22</string>
+              <string>23</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
               <key>UIDeviceFamily</key>
@@ -497,15 +601,15 @@ jobs:
           cat << 'EOF' > deb_root/DEBIAN/control
           Package: com.demonin.dodecadragons
           Name: DodecaDragons
-          Version: 1.2.1
+          Version: 1.2.2
           Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port - Reference UI Match
+          Description: DodecaDragons native iOS port - Notch-Aligned Gold & Fixed Resources Window
           Maintainer: Demonin
           Author: Demonin
           Section: Games
           EOF
           chmod 755 deb_root/DEBIAN
-          dpkg-deb -Zxz --build deb_root DodecaDragons_1.2.1_iphoneos-arm64.deb
+          dpkg-deb -Zxz --build deb_root DodecaDragons_1.2.2_iphoneos-arm64.deb
 
           # 6. Package as .ipa
           mkdir -p Payload
@@ -517,5 +621,5 @@ jobs:
         with:
           name: DodecaDragons-Builds
           path: |
-            DodecaDragons_1.2.1_iphoneos-arm64.deb
+            DodecaDragons_1.2.2_iphoneos-arm64.deb
             DodecaDragons.ipa
