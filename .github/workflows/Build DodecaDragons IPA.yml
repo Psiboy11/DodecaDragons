@@ -417,4 +417,93 @@ jobs:
                   topViewController()?.present(alert, animated: true)
               }
 
-              func webView(_ webView
+              func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
+                  let alert = UIAlertController(title: prompt, message: nil, preferredStyle: .alert)
+                  alert.addTextField { tf in tf.text = defaultText; tf.placeholder = "Paste save data..." }
+                  alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(nil) })
+                  alert.addAction(UIAlertAction(title: "Import", style: .default) { _ in completionHandler(alert.textFields?.first?.text) })
+                  topViewController()?.present(alert, animated: true)
+              }
+          }
+
+          UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil, NSStringFromClass(AppDelegate.self))
+          EOF
+
+          # 2. Compile directly with Swiftc
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          xcrun --sdk iphoneos swiftc \
+            -target arm64-apple-ios15.0 \
+            -sdk "$SDK_PATH" \
+            -O \
+            -o "$APP_DIR/DodecaDragons" \
+            main.swift
+
+          # 3. Write Info.plist
+          cat << 'EOF' > "$APP_DIR/Info.plist"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>DodecaDragons</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.demonin.dodecadragons</string>
+              <key>CFBundleName</key>
+              <string>DodecaDragons</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.1.3</string>
+              <key>CFBundleVersion</key>
+              <string>14</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>UIDeviceFamily</key>
+              <array><integer>1</integer><integer>2</integer></array>
+              <key>UILaunchScreen</key><dict/>
+              <key>UIRequiredDeviceCapabilities</key><array><string>arm64</string></array>
+              <key>UIRequiresFullScreen</key><true/>
+              <key>UIStatusBarHidden</key><true/>
+              <key>UIViewControllerBasedStatusBarAppearance</key><true/>
+              <key>UISupportedInterfaceOrientations</key>
+              <array>
+                  <string>UIInterfaceOrientationPortrait</string>
+                  <string>UIInterfaceOrientationLandscapeLeft</string>
+                  <string>UIInterfaceOrientationLandscapeRight</string>
+              </array>
+          </dict>
+          </plist>
+          EOF
+
+          # 4. Sign binary
+          brew install dpkg ldid
+          ldid -S "$APP_DIR/DodecaDragons"
+
+          # 5. Package as .deb
+          mkdir -p deb_root/DEBIAN deb_root/Applications
+          cp -r "$APP_DIR" deb_root/Applications/
+          cat << 'EOF' > deb_root/DEBIAN/control
+          Package: com.demonin.dodecadragons
+          Name: DodecaDragons
+          Version: 1.1.3
+          Architecture: iphoneos-arm64
+          Description: DodecaDragons native iOS port - Top-Right Double-Tap Zoom & Camera Reset
+          Maintainer: Demonin
+          Author: Demonin
+          Section: Games
+          EOF
+          chmod 755 deb_root/DEBIAN
+          dpkg-deb -Zxz --build deb_root DodecaDragons_1.1.3_iphoneos-arm64.deb
+
+          # 6. Package as .ipa
+          mkdir -p Payload
+          cp -r "$APP_DIR" Payload/
+          zip -r9 DodecaDragons.ipa Payload
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: DodecaDragons-Builds
+          path: |
+            DodecaDragons_1.1.3_iphoneos-arm64.deb
+            DodecaDragons.ipa
