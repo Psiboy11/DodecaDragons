@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build App with Fixed Top-Right Menu, Compact Notch Gold HUD & Black Text
+      - name: Build True Rigid-Body Scale App with Fixed Root Menu & Notch Gold HUD
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -67,8 +67,8 @@ jobs:
 
                       var style = document.createElement('style');
                       style.textContent = `
-                          /* Keep html and body at exact 100vw x 100vh so CSS 50% and JS window.innerWidth/2 match 1:1 */
-                          html, body {
+                          /* Root HTML holds the unscaled Fixed HUD & Top-Right Menu */
+                          html {
                               position: fixed !important;
                               top: 0 !important;
                               left: 0 !important;
@@ -76,31 +76,35 @@ jobs:
                               height: 100vh !important;
                               margin: 0 !important;
                               padding: 0 !important;
-                              overflow: hidden !important;
                               background-color: #1a1a1a !important;
+                              overflow: hidden !important;
+                              -webkit-text-size-adjust: none !important;
+                              text-size-adjust: none !important;
                               -webkit-user-select: none !important;
                               user-select: none !important;
                               touch-action: none !important;
-                              -webkit-font-smoothing: antialiased !important;
-                              -webkit-text-size-adjust: none !important;
-                              text-size-adjust: none !important;
                           }
 
-                          /* Master Board Container: Holds ONLY the draggable game windows and canvas lines */
-                          #ios-board-wrapper {
+                          /* Apply transform: scale() directly to BODY.
+                             In CSS, transforming body creates a containing block for ALL position:fixed and position:absolute
+                             windows inside it—so 100% of windows stay locked together and NEVER separate when scaling! */
+                          body {
                               position: absolute !important;
                               top: 0 !important;
                               left: 0 !important;
                               width: 100vw !important;
                               height: 100vh !important;
+                              margin: 0 !important;
+                              padding: 0 !important;
+                              overflow: visible !important;
+                              background-color: transparent !important;
                               transform-origin: 50% 50% !important;
-                              transform: scale(0.88);
-                              pointer-events: auto !important;
-                              z-index: 1 !important;
+                              transform: scale(0.88) !important;
+                              -webkit-font-smoothing: antialiased !important;
                           }
 
                           /* Clean normal-weight typography (never bold) */
-                          body, .window, .window-body, button, p, div, span, td, th, b, strong {
+                          html, body, .window, .window-body, button, p, div, span, td, th, b, strong {
                               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
                               font-weight: normal !important;
                               -webkit-text-size-adjust: none !important;
@@ -164,89 +168,89 @@ jobs:
                               pointer-events: none !important;
                           }
 
-                          /* Fix Top Menu / Home Button in place at the TOP RIGHT, taking into account the Notch */
-                          #home, img#home, [onclick*="posSet(0,0)"], #top-right-menu-wrapper {
+                          /* Fixed Top-Right Menu / Home Button (Attached to HTML root so it NEVER scales or moves) */
+                          #ios-fixed-top-menu {
                               position: fixed !important;
-                              top: calc(env(safe-area-inset-top, 0px) + 8px) !important;
-                              right: calc(env(safe-area-inset-right, 0px) + 10px) !important;
-                              left: auto !important;
-                              bottom: auto !important;
-                              width: 26px !important;
-                              height: 26px !important;
-                              min-width: 26px !important;
-                              min-height: 26px !important;
+                              top: 8px !important;
+                              right: max(10px, env(safe-area-inset-right, 10px)) !important;
                               z-index: 2147483647 !important;
-                              display: block !important;
-                              visibility: visible !important;
-                              opacity: 0.9 !important;
+                              display: flex !important;
+                              flex-direction: row !important;
+                              align-items: center !important;
+                              gap: 6px !important;
                               transform: none !important;
                               zoom: 1 !important;
                               pointer-events: auto !important;
                           }
 
-                          /* Smaller Fixed Gold Counter sitting right next to the Notch */
+                          #ios-fixed-top-menu img,
+                          #ios-fixed-top-menu #home,
+                          #ios-fixed-top-menu .clickButton {
+                              position: static !important;
+                              width: 26px !important;
+                              height: 26px !important;
+                              min-width: 26px !important;
+                              min-height: 26px !important;
+                              margin: 0 !important;
+                              display: inline-block !important;
+                              visibility: visible !important;
+                              opacity: 0.9 !important;
+                              transform: none !important;
+                              cursor: pointer !important;
+                          }
+
+                          /* Smaller Fixed Gold Counter up next to the notch (where it was a few versions ago) */
                           #custom-ios-gold {
                               position: fixed !important;
-                              top: calc(env(safe-area-inset-top, 0px) + 6px) !important;
-                              left: calc(env(safe-area-inset-left, 0px) + 10px) !important;
+                              top: 8px !important;
+                              left: max(8px, env(safe-area-inset-left, 8px)) !important;
                               background: #c0c0c0 !important;
                               border: 2px outset #ffffff !important;
-                              padding: 2px 6px !important;
+                              padding: 2px 7px !important;
                               font-family: -apple-system, BlinkMacSystemFont, sans-serif !important;
                               font-size: 12px !important;
-                              line-height: 1.2 !important;
                               font-weight: normal !important;
                               color: #000000 !important;
                               z-index: 2147483647 !important;
-                              box-shadow: 1px 1px 4px rgba(0,0,0,0.45) !important;
+                              box-shadow: 2px 2px 5px rgba(0,0,0,0.5) !important;
                               pointer-events: none !important;
-                              white-space: nowrap !important;
+                              transform: none !important;
+                              zoom: 1 !important;
                           }
                       `;
                       document.head.appendChild(style);
 
-                      // Wrap ONLY game windows & background canvas inside #ios-board-wrapper
-                      // Keep fixed top menu items (#home, HUDs) directly on document.body so they stay 100% fixed!
-                      function setupBoardWrapper() {
-                          var board = document.getElementById('ios-board-wrapper');
-                          if (!board) {
-                              board = document.createElement('div');
-                              board.id = 'ios-board-wrapper';
-                              document.body.appendChild(board);
-                          }
-
-                          var children = Array.from(document.body.children);
-                          for (var i = 0; i < children.length; i++) {
-                              var el = children[i];
-                              if (el.id === 'ios-board-wrapper' || el.id === 'custom-ios-gold' || el.id === 'home' || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') {
-                                  continue;
-                              }
-                              // Keep any element that acts as a fixed top menu / home button outside the scaled board
-                              var onclickAttr = el.getAttribute('onclick') || '';
-                              if (onclickAttr.indexOf('posSet(0,0)') !== -1 || el.classList.contains('clickButton')) {
-                                  continue;
-                              }
-                              board.appendChild(el);
-                          }
-
-                          // If #home was nested inside another element, pull it out to document.body so position:fixed works relative to screen
-                          var homeEl = document.getElementById('home') || document.querySelector('[onclick*="posSet(0,0)"]');
-                          if (homeEl && homeEl.parentElement !== document.body) {
-                              document.body.appendChild(homeEl);
-                          }
-                      }
-
-                      if (document.readyState === 'loading') {
-                          document.addEventListener('DOMContentLoaded', setupBoardWrapper);
-                      } else {
-                          setupBoardWrapper();
-                      }
-
-                      // Inject the Smaller Fixed Gold Counter Box next to the notch
+                      // Mount Fixed Gold Counter & Fixed Top-Right Menu directly onto document.documentElement (<html>)
+                      // Because they live on <html> instead of <body>, scaling <body> NEVER scales or moves them!
                       var goldBox = document.createElement('div');
                       goldBox.id = 'custom-ios-gold';
                       goldBox.innerText = 'Gold: 0';
-                      document.body.appendChild(goldBox);
+                      document.documentElement.appendChild(goldBox);
+
+                      var topMenuContainer = document.createElement('div');
+                      topMenuContainer.id = 'ios-fixed-top-menu';
+                      document.documentElement.appendChild(topMenuContainer);
+
+                      function pinTopMenuItems() {
+                          // Move #home and any top-level clickButton icons out of <body> and into #ios-fixed-top-menu on <html>
+                          var selectors = ['#home', '[onclick*="posSet(0,0)"]', 'body > img.clickButton', 'body > .clickButton'];
+                          selectors.forEach(function(sel) {
+                              var nodes = document.querySelectorAll(sel);
+                              for (var i = 0; i < nodes.length; i++) {
+                                  var el = nodes[i];
+                                  if (el.id === 'arrowUp' || el.id === 'arrowDown' || el.id === 'arrowLeft' || el.id === 'arrowRight') continue;
+                                  if (el.parentElement !== topMenuContainer) {
+                                      topMenuContainer.appendChild(el);
+                                  }
+                              }
+                          });
+                      }
+
+                      if (document.readyState === 'loading') {
+                          document.addEventListener('DOMContentLoaded', pinTopMenuItems);
+                      } else {
+                          pinTopMenuItems();
+                      }
 
                       setInterval(function() {
                           if (typeof game !== 'undefined' && game.gold && typeof format === 'function') {
@@ -254,7 +258,7 @@ jobs:
                           }
                       }, 100);
 
-                      // Aggressively convert any standard blue text anywhere in the UI (except title bars) to black & non-bold
+                      // Convert any standard blue text inside windows to solid BLACK & normal weight
                       function convertBlueTextToBlack() {
                           var elements = document.querySelectorAll('span, p, div, b, strong, font, button, td, th, a');
                           for (var i = 0; i < elements.length; i++) {
@@ -266,7 +270,6 @@ jobs:
                               var m = c.match(/rgb\\((\\d+),\\s*(\\d+),\\s*(\\d+)\\)/);
                               if (m) {
                                   var r = parseInt(m[1], 10), g = parseInt(m[2], 10), b = parseInt(m[3], 10);
-                                  // Any shade where blue dominates red and green (standard blue, navy, royal blue, etc.)
                                   if (b > 100 && b > r * 1.5 && b > g * 1.15) {
                                       el.style.setProperty('color', '#000000', 'important');
                                       el.style.setProperty('font-weight', 'normal', 'important');
@@ -293,7 +296,7 @@ jobs:
                           }
                       }
 
-                      // Camera Controller: Scales #ios-board-wrapper as one solid unit
+                      // Camera Controller: Scales document.body directly so 100% of windows scale together without separating
                       var currentScale = 1.0;
                       var startDist = 0, startScale = 1.0;
                       var isPanning = false, lastX = 0, lastY = 0, accumDX = 0, accumDY = 0;
@@ -301,9 +304,8 @@ jobs:
                       function applyBoardScale(scale) {
                           currentScale = Math.min(Math.max(scale, 0.35), 2.5);
                           var finalScale = (0.88 * currentScale).toFixed(3);
-                          var board = document.getElementById('ios-board-wrapper');
-                          if (board) {
-                              board.style.setProperty('transform', 'scale(' + finalScale + ')', 'important');
+                          if (document.body) {
+                              document.body.style.setProperty('transform', 'scale(' + finalScale + ')', 'important');
                           }
                       }
 
@@ -344,7 +346,7 @@ jobs:
                               startScale = currentScale;
                           } else if (e.touches.length === 1) {
                               var tag = e.target.tagName ? e.target.tagName.toLowerCase() : '';
-                              if (tag === 'button' || tag === 'input' || tag === 'a' || tag === 'select' || e.target.onclick || e.target.closest('button') || e.target.id === 'home') {
+                              if (tag === 'button' || tag === 'input' || tag === 'a' || tag === 'select' || e.target.onclick || e.target.closest('button') || e.target.closest('#ios-fixed-top-menu')) {
                                   isPanning = false;
                                   return;
                               }
@@ -387,7 +389,7 @@ jobs:
                       }, { passive: true });
 
                       window.addEventListener('load', function() {
-                          setupBoardWrapper();
+                          pinTopMenuItems();
                           applyStartingResources(false);
                           convertBlueTextToBlack();
                           if (typeof window.reset === 'function') {
@@ -491,9 +493,9 @@ jobs:
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
-              <string>1.1.5</string>
+              <string>1.1.6</string>
               <key>CFBundleVersion</key>
-              <string>16</string>
+              <string>17</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
               <key>UIDeviceFamily</key>
@@ -523,15 +525,15 @@ jobs:
           cat << 'EOF' > deb_root/DEBIAN/control
           Package: com.demonin.dodecadragons
           Name: DodecaDragons
-          Version: 1.1.5
+          Version: 1.1.6
           Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port - Fixed Top-Right Menu & Compact Notch HUD
+          Description: DodecaDragons native iOS port - Rigid Body Scaling & Root Fixed Menu
           Maintainer: Demonin
           Author: Demonin
           Section: Games
           EOF
           chmod 755 deb_root/DEBIAN
-          dpkg-deb -Zxz --build deb_root DodecaDragons_1.1.5_iphoneos-arm64.deb
+          dpkg-deb -Zxz --build deb_root DodecaDragons_1.1.6_iphoneos-arm64.deb
 
           # 6. Package as .ipa
           mkdir -p Payload
@@ -543,5 +545,5 @@ jobs:
         with:
           name: DodecaDragons-Builds
           path: |
-            DodecaDragons_1.1.5_iphoneos-arm64.deb
+            DodecaDragons_1.1.6_iphoneos-arm64.deb
             DodecaDragons.ipa
