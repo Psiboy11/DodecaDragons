@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build App with Fixed Top Menu Windows & Darker Blue Text
+      - name: Build App with Fixed Top Menu & Original Pixel Font
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -67,7 +67,6 @@ jobs:
 
                       var style = document.createElement('style');
                       style.textContent = `
-                          /* Keep html and body UNTRANSFORMED so fixed top menu items NEVER scale with pinch */
                           html, body {
                               position: fixed !important;
                               top: 0 !important;
@@ -82,12 +81,11 @@ jobs:
                               -webkit-user-select: none !important;
                               user-select: none !important;
                               touch-action: none !important;
-                              -webkit-font-smoothing: antialiased !important;
                               -webkit-text-size-adjust: none !important;
                               text-size-adjust: none !important;
                           }
 
-                          /* Board wrapper scales ONLY the map-bound game windows as one unit */
+                          /* Scaling board wrapper for windows (Preserves original pixel font rendering) */
                           #ios-board-wrapper {
                               position: absolute !important;
                               top: 0 !important;
@@ -115,35 +113,7 @@ jobs:
                               pointer-events: auto !important;
                           }
 
-                          /* Clean normal-weight typography */
-                          body, .window, .window-body, button, p, div, span, td, th {
-                              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
-                              font-weight: normal !important;
-                              -webkit-text-size-adjust: none !important;
-                              text-size-adjust: none !important;
-                          }
-
-                          .title-bar-text {
-                              font-size: 12px !important;
-                              font-weight: normal !important;
-                          }
-
-                          .window-body {
-                              font-size: 11.5px !important;
-                              line-height: 1.2 !important;
-                              font-weight: normal !important;
-                              touch-action: pan-y !important;
-                          }
-
-                          .window button {
-                              font-size: 11px !important;
-                              font-weight: normal !important;
-                              line-height: 1.15 !important;
-                              white-space: normal !important;
-                              word-wrap: break-word !important;
-                          }
-
-                          /* Make blue text darker (#000075 deep navy blue) */
+                          /* Standard Blue Text Forced to Black */
                           [style*="color: blue" i],
                           [style*="color:blue" i],
                           [style*="color: #00f" i],
@@ -151,63 +121,70 @@ jobs:
                           [style*="color: #0000ff" i],
                           [style*="color:#0000ff" i],
                           [style*="color: rgb(0, 0, 255)" i],
-                          [style*="color: #0066ff" i],
-                          [style*="color: #0088ff" i],
-                          [style*="color: dodgerblue" i],
-                          [style*="color: royalblue" i],
                           font[color="blue" i],
                           font[color="#0000ff" i] {
-                              color: #000075 !important;
+                              color: #000000 !important;
                               font-weight: normal !important;
+                              text-shadow: none !important;
                           }
 
-                          /* Hide FPS, Navigation Arrows, and original Home Icon */
+                          /* Hide FPS and Nav Arrows */
                           #fps, .fps, [id*="fps" i],
                           #arrowUp, #arrowDown, #arrowLeft, #arrowRight,
-                          img[src*="arrowUp"], img[src*="arrowDown"], img[src*="arrowLeft"], img[src*="arrowRight"],
-                          #home, img#home, [onclick*="posSet(0,0)"] {
+                          img[src*="arrowUp"], img[src*="arrowDown"], img[src*="arrowLeft"], img[src*="arrowRight"] {
                               display: none !important;
                               visibility: hidden !important;
                               pointer-events: none !important;
                           }
 
-                          /* Fixed Gold Counter up next to the notch */
+                          /* Top-Left Menu Container (Fixed outside the scaled board) */
+                          #ios-fixed-top-menu {
+                              position: fixed !important;
+                              top: max(8px, env(safe-area-inset-top)) !important;
+                              left: max(8px, env(safe-area-inset-left)) !important;
+                              z-index: 2147483647 !important;
+                              display: flex !important;
+                              flex-wrap: wrap !important;
+                              gap: 4px !important;
+                              width: 250px !important;
+                              pointer-events: none !important;
+                          }
+
+                          #ios-fixed-top-menu > button {
+                              pointer-events: auto !important;
+                              margin: 0 !important;
+                          }
+
+                          /* Small Top-Right Gold Counter */
                           #custom-ios-gold {
                               position: fixed !important;
-                              top: 8px !important;
-                              left: max(8px, env(safe-area-inset-left, 8px)) !important;
+                              top: max(8px, env(safe-area-inset-top)) !important;
+                              right: max(8px, env(safe-area-inset-right)) !important;
                               background: #c0c0c0 !important;
                               border: 2px outset #ffffff !important;
-                              padding: 2px 7px !important;
-                              font-family: -apple-system, BlinkMacSystemFont, sans-serif !important;
-                              font-size: 12px !important;
+                              padding: 2px 4px !important;
+                              font-size: 10px !important;
                               font-weight: normal !important;
                               color: #000000 !important;
                               z-index: 2147483647 !important;
                               box-shadow: 2px 2px 5px rgba(0,0,0,0.5) !important;
                               pointer-events: none !important;
-                              transform: none !important;
-                              zoom: 1 !important;
-                          }
-
-                          /* Any top menu item / window moved to body stays strictly fixed in place and unscaled */
-                          body > .ios-pinned-menu-item {
-                              position: fixed !important;
-                              z-index: 2147483645 !important;
-                              transform: none !important;
-                              zoom: 0.88 !important;
                           }
                       `;
                       document.head.appendChild(style);
 
-                      // Inject Fixed Gold Counter directly on body
+                      // Create Unscaled UI Overlays on document.documentElement
+                      var topMenuContainer = document.createElement('div');
+                      topMenuContainer.id = 'ios-fixed-top-menu';
+                      document.documentElement.appendChild(topMenuContainer);
+
                       var goldBox = document.createElement('div');
                       goldBox.id = 'custom-ios-gold';
                       goldBox.innerText = 'Gold: 0';
-                      document.body.appendChild(goldBox);
+                      document.documentElement.appendChild(goldBox);
 
-                      // Identify which windows/buttons are Fixed Top Menu items vs. Panning Board Windows
-                      function separateMenuFromBoard() {
+                      // Move board elements & pin top menu buttons
+                      function organizeDOM() {
                           var board = document.getElementById('ios-board-wrapper');
                           if (!board) {
                               board = document.createElement('div');
@@ -215,72 +192,39 @@ jobs:
                               document.body.appendChild(board);
                           }
 
-                          // First move unmarked body elements into board wrapper
+                          // 1. Move all body content into the scaling board
                           var bodyChildren = Array.from(document.body.children);
                           for (var i = 0; i < bodyChildren.length; i++) {
                               var el = bodyChildren[i];
-                              if (
-                                  el.id === 'ios-board-wrapper' ||
-                                  el.id === 'custom-ios-gold' ||
-                                  el.classList.contains('ios-pinned-menu-item') ||
-                                  el.tagName === 'SCRIPT' ||
-                                  el.tagName === 'STYLE'
-                              ) {
-                                  continue;
-                              }
+                              if (el.id === 'ios-board-wrapper' || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
                               board.appendChild(el);
                           }
 
-                          // In DodecaDragons, map-panning windows use inline `left: calc(50% ...)` / `top: calc(50% ...)`.
-                          // Top menu items/icons/windows (Settings, Achievements, Info, etc.) are positioned relative to
-                          // the top/right/left edges of the screen (without calc(50%)) or have fixed top bar IDs.
-                          var candidates = Array.from(board.querySelectorAll('.window, img, button, div'));
-                          for (var j = 0; j < candidates.length; j++) {
-                              var node = candidates[j];
-                              if (node.parentElement !== board && !node.classList.contains('window')) continue;
-
-                              var idLower = (node.id || '').toLowerCase();
-                              var classLower = (node.className || '').toLowerCase();
-                              var styleAttr = (node.getAttribute('style') || '').toLowerCase();
-                              var comp = window.getComputedStyle(node);
-
-                              var isNamedMenu = (
-                                  idLower.indexOf('setting') !== -1 ||
-                                  idLower.indexOf('option') !== -1 ||
-                                  idLower.indexOf('achieve') !== -1 ||
-                                  idLower.indexOf('info') !== -1 ||
-                                  idLower.indexOf('changelog') !== -1 ||
-                                  idLower.indexOf('discord') !== -1 ||
-                                  idLower.indexOf('topbar') !== -1 ||
-                                  idLower.indexOf('menu') !== -1 ||
-                                  classLower.indexOf('topbar') !== -1 ||
-                                  classLower.indexOf('menubutton') !== -1 ||
-                                  classLower.indexOf('clickbutton') !== -1
-                              );
-
-                              // Also catch any fixed element anchored near the top edge that doesn't use calc(50%...) map coordinates
-                              var rect = node.getBoundingClientRect();
-                              var isTopEdgeFixed = (
-                                  comp.position === 'fixed' &&
-                                  styleAttr.indexOf('calc(50%') === -1 &&
-                                  rect.top >= 0 && rect.top <= 70 &&
-                                  rect.height > 0 && rect.height < 120
-                              );
-
-                              if (isNamedMenu || isTopEdgeFixed) {
-                                  node.classList.add('ios-pinned-menu-item');
-                                  document.body.appendChild(node);
+                          // 2. Extract specific loose top buttons and put them in the fixed top-left menu
+                          var looseButtons = Array.from(board.querySelectorAll('button'));
+                          for (var j = 0; j < looseButtons.length; j++) {
+                              var btn = looseButtons[j];
+                              // Only target buttons that are NOT inside a .window container
+                              if (!btn.closest('.window') && btn.parentElement !== topMenuContainer) {
+                                  topMenuContainer.appendChild(btn);
                               }
                           }
                       }
 
                       if (document.readyState === 'loading') {
-                          document.addEventListener('DOMContentLoaded', separateMenuFromBoard);
+                          document.addEventListener('DOMContentLoaded', organizeDOM);
                       } else {
-                          separateMenuFromBoard();
+                          organizeDOM();
                       }
 
-                      // Darken any computed bright blue text inside windows to #000075
+                      // Gold Updater
+                      setInterval(function() {
+                          if (typeof game !== 'undefined' && game.gold && typeof format === 'function') {
+                              goldBox.innerText = 'Gold: ' + format(game.gold);
+                          }
+                      }, 100);
+
+                      // Convert inline blue text to black without bolding
                       function darkenBlueText() {
                           var elements = document.querySelectorAll('.window-body span, .window-body p, .window-body div, .window-body b, .window-body button, .window-body font');
                           for (var i = 0; i < elements.length; i++) {
@@ -289,22 +233,16 @@ jobs:
                               var m = c.match(/rgb\\((\\d+),\\s*(\\d+),\\s*(\\d+)\\)/);
                               if (m) {
                                   var r = parseInt(m[1], 10), g = parseInt(m[2], 10), b = parseInt(m[3], 10);
-                                  if (r < 60 && g < 100 && b > 160) {
-                                      el.style.setProperty('color', '#000075', 'important');
+                                  if (b > 150 && r < 100 && g < 100) {
+                                      el.style.setProperty('color', '#000000', 'important');
                                       el.style.setProperty('font-weight', 'normal', 'important');
                                   }
                               }
                           }
                       }
-                      setInterval(darkenBlueText, 600);
+                      setInterval(darkenBlueText, 500);
 
-                      setInterval(function() {
-                          if (typeof game !== 'undefined' && game.gold && typeof format === 'function') {
-                              goldBox.innerText = 'Gold: ' + format(game.gold);
-                          }
-                      }, 100);
-
-                      // Starting Resources
+                      // Offline Progress / Start Boost
                       function applyStartingResources(force) {
                           if (typeof game === 'undefined' || typeof ExpantaNum === 'undefined') {
                               setTimeout(function() { applyStartingResources(force); }, 100);
@@ -320,7 +258,7 @@ jobs:
                           }
                       }
 
-                      // Camera Controller: Scales ONLY #ios-board-wrapper so Top Menu items on body stay fixed in place
+                      // Camera / Zoom Controller (Scales #ios-board-wrapper ONLY)
                       var currentScale = 1.0;
                       var startDist = 0, startScale = 1.0;
                       var isPanning = false, lastX = 0, lastY = 0, accumDX = 0, accumDY = 0;
@@ -338,22 +276,15 @@ jobs:
                           return Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
                       }
 
-                      // Top-Right Double-Tap Detector: Centers camera at (0,0) AND resets board zoom scale to default (1.0x)
+                      // Double-Tap Top Right to Reset
                       var lastTopRightTapTime = 0;
                       document.addEventListener('touchend', function(e) {
                           var touch = e.changedTouches && e.changedTouches[0];
                           if (!touch) return;
-
-                          var x = touch.clientX;
-                          var y = touch.clientY;
-                          var screenW = window.innerWidth;
-
-                          if (x >= screenW - 120 && y <= 100) {
+                          if (touch.clientX >= window.innerWidth - 120 && touch.clientY <= 100) {
                               var now = Date.now();
                               if (now - lastTopRightTapTime < 350) {
-                                  if (typeof posSet === 'function') {
-                                      posSet(0, 0);
-                                  }
+                                  if (typeof posSet === 'function') posSet(0, 0);
                                   if (typeof xPos !== 'undefined') xPos = 0;
                                   if (typeof yPos !== 'undefined') yPos = 0;
                                   applyBoardScale(1.0);
@@ -371,7 +302,7 @@ jobs:
                               startScale = currentScale;
                           } else if (e.touches.length === 1) {
                               var tag = e.target.tagName ? e.target.tagName.toLowerCase() : '';
-                              if (tag === 'button' || tag === 'input' || tag === 'a' || tag === 'select' || e.target.onclick || e.target.closest('button') || e.target.closest('.ios-pinned-menu-item')) {
+                              if (tag === 'button' || tag === 'input' || tag === 'a' || tag === 'select' || e.target.onclick || e.target.closest('button') || e.target.closest('#ios-fixed-top-menu')) {
                                   isPanning = false;
                                   return;
                               }
@@ -413,9 +344,16 @@ jobs:
                           if (e.touches.length === 0) isPanning = false;
                       }, { passive: true });
 
+                      document.addEventListener("visibilitychange", function() {
+                          if (document.hidden && typeof save === 'function') save();
+                      });
+                      window.addEventListener('pagehide', function() {
+                          if (typeof save === 'function') save();
+                      });
+
                       window.addEventListener('load', function() {
-                          separateMenuFromBoard();
-                          setTimeout(separateMenuFromBoard, 300);
+                          organizeDOM();
+                          setTimeout(organizeDOM, 300);
                           applyStartingResources(false);
                           darkenBlueText();
                           if (typeof window.reset === 'function') {
@@ -460,6 +398,14 @@ jobs:
                   }
 
                   return true
+              }
+
+              func applicationWillResignActive(_ application: UIApplication) {
+                  webView?.evaluateJavaScript("if (typeof save === 'function') save();", completionHandler: nil)
+              }
+
+              func applicationDidEnterBackground(_ application: UIApplication) {
+                  webView?.evaluateJavaScript("if (typeof save === 'function') save();", completionHandler: nil)
               }
 
               func viewForZooming(in scrollView: UIScrollView) -> UIView? { return nil }
@@ -519,9 +465,9 @@ jobs:
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
-              <string>1.1.8</string>
+              <string>1.2.1</string>
               <key>CFBundleVersion</key>
-              <string>19</string>
+              <string>22</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
               <key>UIDeviceFamily</key>
@@ -551,15 +497,15 @@ jobs:
           cat << 'EOF' > deb_root/DEBIAN/control
           Package: com.demonin.dodecadragons
           Name: DodecaDragons
-          Version: 1.1.8
+          Version: 1.2.1
           Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port - Fixed Menu Windows & Darker Blue Text
+          Description: DodecaDragons native iOS port - Reference UI Match
           Maintainer: Demonin
           Author: Demonin
           Section: Games
           EOF
           chmod 755 deb_root/DEBIAN
-          dpkg-deb -Zxz --build deb_root DodecaDragons_1.1.8_iphoneos-arm64.deb
+          dpkg-deb -Zxz --build deb_root DodecaDragons_1.2.1_iphoneos-arm64.deb
 
           # 6. Package as .ipa
           mkdir -p Payload
@@ -571,5 +517,5 @@ jobs:
         with:
           name: DodecaDragons-Builds
           path: |
-            DodecaDragons_1.1.8_iphoneos-arm64.deb
+            DodecaDragons_1.2.1_iphoneos-arm64.deb
             DodecaDragons.ipa
