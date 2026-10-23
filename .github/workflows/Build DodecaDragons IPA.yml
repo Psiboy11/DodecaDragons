@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build Exact-Position App with Black Normal-Weight Text
+      - name: Build App with Fixed Top-Right Menu, Compact Notch Gold HUD & Black Text
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -86,7 +86,7 @@ jobs:
                               text-size-adjust: none !important;
                           }
 
-                          /* Master Board Container: Exact 100vw x 100vh so every window's original coordinates are preserved */
+                          /* Master Board Container: Holds ONLY the draggable game windows and canvas lines */
                           #ios-board-wrapper {
                               position: absolute !important;
                               top: 0 !important;
@@ -96,12 +96,11 @@ jobs:
                               transform-origin: 50% 50% !important;
                               transform: scale(0.88);
                               pointer-events: auto !important;
+                              z-index: 1 !important;
                           }
 
-                          /* DO NOT override .window transform or zoom - let DodecaDragons style.css position every window natively */
-
-                          /* Clean normal-weight typography (no forced bolding) */
-                          body, .window, .window-body, button, p, div, span, td, th {
+                          /* Clean normal-weight typography (never bold) */
+                          body, .window, .window-body, button, p, div, span, td, th, b, strong {
                               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
                               font-weight: normal !important;
                               -webkit-text-size-adjust: none !important;
@@ -128,7 +127,7 @@ jobs:
                               word-wrap: break-word !important;
                           }
 
-                          /* Change blue text to BLACK with normal (non-bold) font weight */
+                          /* Change ALL standard blue text to solid BLACK with normal weight */
                           [style*="color: blue" i],
                           [style*="color:blue" i],
                           [style*="color: #00f" i],
@@ -139,56 +138,102 @@ jobs:
                           [style*="color: #008" i],
                           [style*="color:#008" i],
                           [style*="color: #000080" i],
+                          [style*="color:#000080" i],
+                          [style*="color: #0066ff" i],
+                          [style*="color: #0044ff" i],
+                          [style*="color: #0088ff" i],
+                          [style*="color: royalblue" i],
+                          [style*="color: dodgerblue" i],
+                          [style*="color: mediumblue" i],
+                          [style*="color: darkblue" i],
                           [style*="color: navy" i],
                           font[color="blue" i],
-                          font[color="#0000ff" i] {
+                          font[color="#0000ff" i],
+                          a, a:visited, a:active {
                               color: #000000 !important;
                               text-shadow: none !important;
                               font-weight: normal !important;
                           }
 
-                          /* Hide original FPS, Navigation Arrows, and original Home Icon */
+                          /* Hide FPS and Navigation Arrows */
                           #fps, .fps, [id*="fps" i],
                           #arrowUp, #arrowDown, #arrowLeft, #arrowRight,
-                          img[src*="arrowUp"], img[src*="arrowDown"], img[src*="arrowLeft"], img[src*="arrowRight"],
-                          #home, img#home, [onclick*="posSet(0,0)"] {
+                          img[src*="arrowUp"], img[src*="arrowDown"], img[src*="arrowLeft"], img[src*="arrowRight"] {
                               display: none !important;
                               visibility: hidden !important;
                               pointer-events: none !important;
                           }
 
-                          /* Fixed Gold Box HUD in top-left with notch-safe inset and normal font weight */
+                          /* Fix Top Menu / Home Button in place at the TOP RIGHT, taking into account the Notch */
+                          #home, img#home, [onclick*="posSet(0,0)"], #top-right-menu-wrapper {
+                              position: fixed !important;
+                              top: calc(env(safe-area-inset-top, 0px) + 8px) !important;
+                              right: calc(env(safe-area-inset-right, 0px) + 10px) !important;
+                              left: auto !important;
+                              bottom: auto !important;
+                              width: 26px !important;
+                              height: 26px !important;
+                              min-width: 26px !important;
+                              min-height: 26px !important;
+                              z-index: 2147483647 !important;
+                              display: block !important;
+                              visibility: visible !important;
+                              opacity: 0.9 !important;
+                              transform: none !important;
+                              zoom: 1 !important;
+                              pointer-events: auto !important;
+                          }
+
+                          /* Smaller Fixed Gold Counter sitting right next to the Notch */
                           #custom-ios-gold {
                               position: fixed !important;
-                              top: max(10px, env(safe-area-inset-top)) !important;
-                              left: max(10px, env(safe-area-inset-left)) !important;
-                              background: #c0c0c0;
-                              border: 2px outset #ffffff;
-                              padding: 4px 10px;
+                              top: calc(env(safe-area-inset-top, 0px) + 6px) !important;
+                              left: calc(env(safe-area-inset-left, 0px) + 10px) !important;
+                              background: #c0c0c0 !important;
+                              border: 2px outset #ffffff !important;
+                              padding: 2px 6px !important;
                               font-family: -apple-system, BlinkMacSystemFont, sans-serif !important;
-                              font-size: 15px;
+                              font-size: 12px !important;
+                              line-height: 1.2 !important;
                               font-weight: normal !important;
-                              color: #000000;
+                              color: #000000 !important;
                               z-index: 2147483647 !important;
-                              box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
-                              pointer-events: none;
+                              box-shadow: 1px 1px 4px rgba(0,0,0,0.45) !important;
+                              pointer-events: none !important;
+                              white-space: nowrap !important;
                           }
                       `;
                       document.head.appendChild(style);
 
-                      // Wrap all game windows inside #ios-board-wrapper without altering their relative DOM hierarchy
+                      // Wrap ONLY game windows & background canvas inside #ios-board-wrapper
+                      // Keep fixed top menu items (#home, HUDs) directly on document.body so they stay 100% fixed!
                       function setupBoardWrapper() {
-                          if (document.getElementById('ios-board-wrapper')) return;
-                          var board = document.createElement('div');
-                          board.id = 'ios-board-wrapper';
-
-                          var children = Array.from(document.body.childNodes);
-                          for (var i = 0; i < children.length; i++) {
-                              var node = children[i];
-                              if (node.id === 'custom-ios-gold' || node.tagName === 'SCRIPT' || node.tagName === 'STYLE') continue;
-                              board.appendChild(node);
+                          var board = document.getElementById('ios-board-wrapper');
+                          if (!board) {
+                              board = document.createElement('div');
+                              board.id = 'ios-board-wrapper';
+                              document.body.appendChild(board);
                           }
-                          document.body.appendChild(board);
+
+                          var children = Array.from(document.body.children);
+                          for (var i = 0; i < children.length; i++) {
+                              var el = children[i];
+                              if (el.id === 'ios-board-wrapper' || el.id === 'custom-ios-gold' || el.id === 'home' || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') {
+                                  continue;
+                              }
+                              // Keep any element that acts as a fixed top menu / home button outside the scaled board
+                              var onclickAttr = el.getAttribute('onclick') || '';
+                              if (onclickAttr.indexOf('posSet(0,0)') !== -1 || el.classList.contains('clickButton')) {
+                                  continue;
+                              }
+                              board.appendChild(el);
+                          }
+
+                          // If #home was nested inside another element, pull it out to document.body so position:fixed works relative to screen
+                          var homeEl = document.getElementById('home') || document.querySelector('[onclick*="posSet(0,0)"]');
+                          if (homeEl && homeEl.parentElement !== document.body) {
+                              document.body.appendChild(homeEl);
+                          }
                       }
 
                       if (document.readyState === 'loading') {
@@ -197,7 +242,7 @@ jobs:
                           setupBoardWrapper();
                       }
 
-                      // Inject the Fixed Gold Counter Box directly on body
+                      // Inject the Smaller Fixed Gold Counter Box next to the notch
                       var goldBox = document.createElement('div');
                       goldBox.id = 'custom-ios-gold';
                       goldBox.innerText = 'Gold: 0';
@@ -209,16 +254,20 @@ jobs:
                           }
                       }, 100);
 
-                      // Convert any class-based or inline blue text inside windows to black, non-bold
+                      // Aggressively convert any standard blue text anywhere in the UI (except title bars) to black & non-bold
                       function convertBlueTextToBlack() {
-                          var elements = document.querySelectorAll('.window-body span, .window-body p, .window-body div, .window-body b, .window-body button');
+                          var elements = document.querySelectorAll('span, p, div, b, strong, font, button, td, th, a');
                           for (var i = 0; i < elements.length; i++) {
                               var el = elements[i];
+                              if (el.classList && (el.classList.contains('title-bar') || el.classList.contains('title-bar-text'))) continue;
+                              if (el.closest && el.closest('.title-bar')) continue;
+
                               var c = window.getComputedStyle(el).color;
                               var m = c.match(/rgb\\((\\d+),\\s*(\\d+),\\s*(\\d+)\\)/);
                               if (m) {
                                   var r = parseInt(m[1], 10), g = parseInt(m[2], 10), b = parseInt(m[3], 10);
-                                  if (r < 50 && g < 85 && b > 120) {
+                                  // Any shade where blue dominates red and green (standard blue, navy, royal blue, etc.)
+                                  if (b > 100 && b > r * 1.5 && b > g * 1.15) {
                                       el.style.setProperty('color', '#000000', 'important');
                                       el.style.setProperty('font-weight', 'normal', 'important');
                                       el.style.setProperty('text-shadow', 'none', 'important');
@@ -226,7 +275,7 @@ jobs:
                               }
                           }
                       }
-                      setInterval(convertBlueTextToBlack, 800);
+                      setInterval(convertBlueTextToBlack, 500);
 
                       // Starting Resources
                       function applyStartingResources(force) {
@@ -295,7 +344,7 @@ jobs:
                               startScale = currentScale;
                           } else if (e.touches.length === 1) {
                               var tag = e.target.tagName ? e.target.tagName.toLowerCase() : '';
-                              if (tag === 'button' || tag === 'input' || tag === 'a' || tag === 'select' || e.target.onclick || e.target.closest('button')) {
+                              if (tag === 'button' || tag === 'input' || tag === 'a' || tag === 'select' || e.target.onclick || e.target.closest('button') || e.target.id === 'home') {
                                   isPanning = false;
                                   return;
                               }
@@ -442,9 +491,9 @@ jobs:
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
-              <string>1.1.4</string>
+              <string>1.1.5</string>
               <key>CFBundleVersion</key>
-              <string>15</string>
+              <string>16</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
               <key>UIDeviceFamily</key>
@@ -474,15 +523,15 @@ jobs:
           cat << 'EOF' > deb_root/DEBIAN/control
           Package: com.demonin.dodecadragons
           Name: DodecaDragons
-          Version: 1.1.4
+          Version: 1.1.5
           Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port - Exact Window Positions & Black Normal Text
+          Description: DodecaDragons native iOS port - Fixed Top-Right Menu & Compact Notch HUD
           Maintainer: Demonin
           Author: Demonin
           Section: Games
           EOF
           chmod 755 deb_root/DEBIAN
-          dpkg-deb -Zxz --build deb_root DodecaDragons_1.1.4_iphoneos-arm64.deb
+          dpkg-deb -Zxz --build deb_root DodecaDragons_1.1.5_iphoneos-arm64.deb
 
           # 6. Package as .ipa
           mkdir -p Payload
@@ -494,5 +543,5 @@ jobs:
         with:
           name: DodecaDragons-Builds
           path: |
-            DodecaDragons_1.1.4_iphoneos-arm64.deb
+            DodecaDragons_1.1.5_iphoneos-arm64.deb
             DodecaDragons.ipa
