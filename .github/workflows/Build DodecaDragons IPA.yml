@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build App with Notch-Aligned Gold & Resources Window
+      - name: Build App with Authentic UI & Fixed Resources Window
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -65,21 +65,6 @@ jobs:
                       }
                       meta.content = 'width=1280, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
 
-                      // Preserve exact original DOM collection order for .box and .window so moving the Resources
-                      // window never shifts DodecaDragons' internal tab indices
-                      var cachedBoxes = null;
-                      var cachedWindows = null;
-                      var origGetByClass = document.getElementsByClassName.bind(document);
-                      document.getElementsByClassName = function(name) {
-                          if ((name === 'box' || name === 'window box' || name === 'box window') && cachedBoxes && cachedBoxes.length > 0) {
-                              return cachedBoxes;
-                          }
-                          if (name === 'window' && cachedWindows && cachedWindows.length > 0) {
-                              return cachedWindows;
-                          }
-                          return origGetByClass(name);
-                      };
-
                       var style = document.createElement('style');
                       style.textContent = `
                           html, body {
@@ -128,17 +113,27 @@ jobs:
                               pointer-events: auto !important;
                           }
 
-                          /* Force ALL clickable text (buttons, disabled/unaffordable buttons, links, clickable rows) to solid BLACK */
-                          button,
+                          /* Ensure active buttons and standard text stay black */
+                          button:not(:disabled):not([disabled]),
+                          button:not(:disabled):not([disabled]) *,
+                          a, a:link, a:visited, a:hover, a:active,
+                          [onclick]:not(.window):not(:disabled) {
+                              color: #000000 !important;
+                              -webkit-text-fill-color: #000000 !important;
+                              text-shadow: none !important;
+                          }
+
+                          /* Restore classic 98.css greyed-out disabled button appearance */
                           button:disabled,
                           button[disabled],
-                          button:active,
-                          button:hover,
-                          button:focus,
-                          button *,
-                          a, a:link, a:visited, a:hover, a:active, a *,
-                          [onclick]:not(.window),
-                          [onclick]:not(.window) *,
+                          button:disabled *,
+                          button[disabled] * {
+                              color: #8a8a8a !important;
+                              -webkit-text-fill-color: #8a8a8a !important;
+                              text-shadow: 1px 1px 0px #ffffff !important;
+                          }
+
+                          /* Force standard inline blue text to black */
                           [style*="color: blue" i],
                           [style*="color:blue" i],
                           [style*="color: #00f" i],
@@ -150,20 +145,15 @@ jobs:
                           font[color="#0000ff" i] {
                               color: #000000 !important;
                               -webkit-text-fill-color: #000000 !important;
+                              font-weight: normal !important;
                               text-shadow: none !important;
-                          }
-
-                          /* Keep window title bar text white as in original UI */
-                          .title-bar-text {
-                              color: #ffffff !important;
-                              -webkit-text-fill-color: #ffffff !important;
                           }
 
                           /* Hide FPS, Navigation Arrows, Visible Home Button, and Achievement Unlocked Box */
                           #fps, .fps, [id*="fps" i],
                           #arrowUp, #arrowDown, #arrowLeft, #arrowRight,
                           img[src*="arrowUp"], img[src*="arrowDown"], img[src*="arrowLeft"], img[src*="arrowRight"],
-                          #home, img#home, img[src*="home" i], [onclick*="posSet(0,0)"], #ios-fixed-home-btn,
+                          #home, img#home, img[src*="home" i], [onclick*="posSet(0,0)"],
                           .ios-hidden-achievement-box {
                               display: none !important;
                               visibility: hidden !important;
@@ -171,16 +161,16 @@ jobs:
                               pointer-events: none !important;
                           }
 
-                          /* Top-Left Menu Bars (Resources, Settings, Achievements, Info/credits) fixed BELOW the notch height */
+                          /* Top-Left Menu Container (Fixed outside the scaled board, strictly below the notch) */
                           #ios-fixed-top-menu {
                               position: fixed !important;
-                              top: max(52px, calc(env(safe-area-inset-top, 48px) + 4px)) !important;
-                              left: max(6px, env(safe-area-inset-left, 6px)) !important;
+                              top: max(8px, env(safe-area-inset-top, 8px)) !important;
+                              left: max(8px, env(safe-area-inset-left, 8px)) !important;
                               z-index: 2147483647 !important;
                               display: flex !important;
                               flex-wrap: wrap !important;
                               gap: 4px !important;
-                              width: 260px !important;
+                              width: 320px !important;
                               pointer-events: none !important;
                               transform: none !important;
                           }
@@ -190,59 +180,26 @@ jobs:
                               margin: 0 !important;
                           }
 
-                          /* Gold Counter directly to the LEFT of the notch at the notch's exact vertical height */
-                          #custom-ios-gold {
-                              position: fixed !important;
-                              top: 12px !important;
-                              right: calc(50% + 210px) !important;
-                              left: auto !important;
-                              background: #c0c0c0 !important;
-                              border: 2px outset #ffffff !important;
-                              padding: 3px 6px !important;
-                              font-size: 11px !important;
-                              font-weight: normal !important;
-                              color: #000000 !important;
-                              z-index: 2147483647 !important;
-                              box-shadow: 2px 2px 5px rgba(0,0,0,0.5) !important;
-                              pointer-events: none !important;
-                              white-space: nowrap !important;
-                              transform: none !important;
-                          }
-
-                          /* Resources Window fixed in place to the RIGHT of the notch */
+                          /* Fix Resources Window firmly to the right of the Notch */
+                          /* Using inverse scaling coordinates so it perfectly maps despite the 0.88 board wrapper scale */
                           .ios-fixed-resources-window {
-                              position: fixed !important;
-                              top: 12px !important;
-                              left: calc(50% + 210px) !important;
-                              right: auto !important;
-                              transform: none !important;
-                              zoom: 1 !important;
+                              position: absolute !important;
+                              top: calc((max(12px, env(safe-area-inset-top, 12px)) - 50vh) * 1.1363 + 50vh) !important;
+                              left: calc(50vw + 140px) !important;
+                              transform: scale(1.1363) !important;
+                              transform-origin: top left !important;
                               z-index: 2147483646 !important;
-                              pointer-events: auto !important;
+                              margin: 0 !important;
                           }
                       `;
                       document.head.appendChild(style);
 
-                      // Create Unscaled Root Overlays on document.documentElement
+                      // Create Unscaled Root Overlay on document.documentElement
                       var topMenuContainer = document.createElement('div');
                       topMenuContainer.id = 'ios-fixed-top-menu';
                       document.documentElement.appendChild(topMenuContainer);
 
-                      var goldBox = document.createElement('div');
-                      goldBox.id = 'custom-ios-gold';
-                      goldBox.innerText = 'Gold: 0';
-                      document.documentElement.appendChild(goldBox);
-
                       function organizeDOM() {
-                          if (!cachedBoxes) {
-                              var b = origGetByClass('box');
-                              if (b && b.length > 0) cachedBoxes = Array.from(b);
-                          }
-                          if (!cachedWindows) {
-                              var w = origGetByClass('window');
-                              if (w && w.length > 0) cachedWindows = Array.from(w);
-                          }
-
                           var board = document.getElementById('ios-board-wrapper');
                           if (!board) {
                               board = document.createElement('div');
@@ -250,46 +207,53 @@ jobs:
                               document.body.appendChild(board);
                           }
 
-                          // 1. Move body children into the scaling board
+                          // Move body children into the scaling board
                           var bodyChildren = Array.from(document.body.children);
                           for (var i = 0; i < bodyChildren.length; i++) {
                               var el = bodyChildren[i];
-                              if (
-                                  el.id === 'ios-board-wrapper' ||
-                                  el.classList.contains('ios-fixed-resources-window') ||
-                                  el.tagName === 'SCRIPT' ||
-                                  el.tagName === 'STYLE'
-                              ) {
+                              if (el.id === 'ios-board-wrapper' || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') {
                                   continue;
                               }
                               board.appendChild(el);
                           }
 
-                          // 2. Put top menu buttons (Resources, Settings, Achievements, Info/credits) into the fixed top-left container
+                          // Extract valid top menu buttons into the fixed container
                           var looseButtons = Array.from(board.querySelectorAll('button'));
                           for (var j = 0; j < looseButtons.length; j++) {
                               var btn = looseButtons[j];
+                              var txt = btn.textContent.toLowerCase();
+                              
+                              // Remove the Info/credits button
+                              if (txt.includes('info/credits')) {
+                                  btn.style.setProperty('display', 'none', 'important');
+                                  continue;
+                              }
+
                               if (!btn.closest('.window') && btn.parentElement !== topMenuContainer) {
                                   topMenuContainer.appendChild(btn);
                               }
                           }
 
-                          // 3. Locate the "Resources" window and the "Achievement unlocked!" box
-                          var allWindows = cachedWindows || Array.from(document.querySelectorAll('.window'));
+                          // Hide empty ghost boxes left behind by the extracted menu buttons
+                          var allBoxes = board.querySelectorAll('.box, #topBar, #menu');
+                          for (var b = 0; b < allBoxes.length; b++) {
+                              var box = allBoxes[b];
+                              if (box.id === 'topBar' || box.id === 'menu' || box.children.length === 0 || box.innerText.trim() === '') {
+                                  box.style.setProperty('display', 'none', 'important');
+                              }
+                          }
+
+                          // Locate specific windows and bind them using !important absolute CSS
+                          var allWindows = document.querySelectorAll('.window');
                           for (var k = 0; k < allWindows.length; k++) {
                               var win = allWindows[k];
                               var titleEl = win.querySelector('.title-bar-text');
                               var titleText = titleEl ? (titleEl.textContent || '').trim().toLowerCase() : '';
 
-                              // Fix the "Resources" window to the right of the notch (outside #ios-board-wrapper)
+                              // Let native JS handle toggling its visibility, we just fix its coordinates
                               if (titleText === 'resources') {
                                   win.classList.add('ios-fixed-resources-window');
-                                  if (win.parentElement !== document.body) {
-                                      document.body.appendChild(win);
-                                  }
                               }
-
-                              // Completely remove/hide the "Achievement unlocked!" popup box
                               if (titleText.indexOf('achievement unlocked') !== -1) {
                                   win.classList.add('ios-hidden-achievement-box');
                               }
@@ -302,22 +266,17 @@ jobs:
                           organizeDOM();
                       }
 
-                      // Update Gold Counter & ensure clickable/blue text stays black
-                      setInterval(function() {
-                          if (typeof game !== 'undefined' && game.gold && typeof format === 'function') {
-                              goldBox.innerText = 'Gold: ' + format(game.gold);
-                          }
-                      }, 100);
-
+                      // Dynamic color scrubber to fix active blue text while ignoring disabled grey buttons
                       function enforceBlackClickableText() {
-                          var elements = document.querySelectorAll('button, button *, a, a *, [onclick]:not(.window), .window-body span, .window-body p, .window-body b, .window-body font');
+                          var elements = document.querySelectorAll('button:not(:disabled), button:not(:disabled) *, a, a *, [onclick]:not(.window), .window-body span, .window-body p, .window-body b, .window-body font');
                           for (var i = 0; i < elements.length; i++) {
                               var el = elements[i];
                               if (el.classList && el.classList.contains('title-bar-text')) continue;
                               if (el.closest && el.closest('.title-bar')) continue;
+                              if (el.closest && el.closest('button:disabled')) continue;
 
                               var tag = el.tagName ? el.tagName.toLowerCase() : '';
-                              if (tag === 'button' || tag === 'a' || el.closest('button') || el.closest('a') || el.hasAttribute('onclick')) {
+                              if (tag === 'button' || tag === 'a' || el.closest('button:not(:disabled)') || el.closest('a') || (el.hasAttribute('onclick') && !el.classList.contains('window'))) {
                                   el.style.setProperty('color', '#000000', 'important');
                                   el.style.setProperty('-webkit-text-fill-color', '#000000', 'important');
                                   el.style.setProperty('text-shadow', 'none', 'important');
@@ -330,6 +289,7 @@ jobs:
                                   var r = parseInt(m[1], 10), g = parseInt(m[2], 10), b = parseInt(m[3], 10);
                                   if (b > 150 && r < 100 && g < 100) {
                                       el.style.setProperty('color', '#000000', 'important');
+                                      el.style.setProperty('-webkit-text-fill-color', '#000000', 'important');
                                       el.style.setProperty('text-shadow', 'none', 'important');
                                   }
                               }
@@ -569,9 +529,9 @@ jobs:
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
-              <string>1.2.2</string>
+              <string>1.2.3</string>
               <key>CFBundleVersion</key>
-              <string>23</string>
+              <string>24</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
               <key>UIDeviceFamily</key>
@@ -601,15 +561,15 @@ jobs:
           cat << 'EOF' > deb_root/DEBIAN/control
           Package: com.demonin.dodecadragons
           Name: DodecaDragons
-          Version: 1.2.2
+          Version: 1.2.3
           Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port - Notch-Aligned Gold & Fixed Resources Window
+          Description: DodecaDragons native iOS port - Reference UI Match
           Maintainer: Demonin
           Author: Demonin
           Section: Games
           EOF
           chmod 755 deb_root/DEBIAN
-          dpkg-deb -Zxz --build deb_root DodecaDragons_1.2.2_iphoneos-arm64.deb
+          dpkg-deb -Zxz --build deb_root DodecaDragons_1.2.3_iphoneos-arm64.deb
 
           # 6. Package as .ipa
           mkdir -p Payload
@@ -621,5 +581,5 @@ jobs:
         with:
           name: DodecaDragons-Builds
           path: |
-            DodecaDragons_1.2.2_iphoneos-arm64.deb
+            DodecaDragons_1.2.3_iphoneos-arm64.deb
             DodecaDragons.ipa
