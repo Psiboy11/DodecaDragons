@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v5
 
-      - name: Build Connected-Zoom & High-Contrast App
+      - name: Build Exact-Layout Board Scaling App with Zoom Reset
         run: |
           APP_DIR="DodecaDragons.app"
           mkdir -p "$APP_DIR/WebAssets"
@@ -93,7 +93,25 @@ jobs:
                               -webkit-text-size-adjust: none !important;
                           }
 
-                          /* Crisp system typography that scales down cleanly without overflowing */
+                          /* Master Board Container: Scales all windows together as ONE unit from the center */
+                          #ios-board-wrapper {
+                              position: absolute !important;
+                              top: 0 !important;
+                              left: 0 !important;
+                              width: 100% !important;
+                              height: 100% !important;
+                              transform-origin: 50% 50% !important;
+                              transform: scale(0.88);
+                              pointer-events: auto !important;
+                          }
+
+                          /* Keep individual windows at 100% native coordinates so relative positions NEVER shift */
+                          .window {
+                              zoom: 1 !important;
+                              transform: none !important;
+                          }
+
+                          /* Crisp typography that fits original window boxes without overflowing */
                           body, .window, .window-body, button, p, div, span, td, th {
                               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
                               -webkit-text-size-adjust: none !important;
@@ -104,12 +122,6 @@ jobs:
                           .title-bar-text {
                               font-weight: 700 !important;
                               font-size: 12px !important;
-                          }
-
-                          /* Use CSS zoom (NOT transform) so left/top coordinates scale together and windows stay connected! */
-                          .window {
-                              zoom: 0.88;
-                              transform: none !important;
                           }
 
                           .window-body {
@@ -129,7 +141,7 @@ jobs:
                               padding: 3px 5px !important;
                           }
 
-                          /* Fix unreadable blue text on purple/dark backgrounds -> Bright Sky Cyan with contrast shadow */
+                          /* High-contrast Sky Cyan for blue text on purple/dark backgrounds */
                           [style*="color: blue" i],
                           [style*="color:blue" i],
                           [style*="color: #00f" i],
@@ -158,7 +170,7 @@ jobs:
                               pointer-events: none !important;
                           }
 
-                          /* Fixed Gold Box HUD styling in top-left */
+                          /* Fixed Gold Box HUD styling in top-left (Outside the scaled board wrapper) */
                           #custom-ios-gold {
                               position: fixed !important;
                               top: 8px !important;
@@ -177,26 +189,44 @@ jobs:
                       `;
                       document.head.appendChild(style);
 
-                      // Inject the Fixed Gold Counter Box
+                      // Wrap all game windows inside #ios-board-wrapper so they scale together as a single rigid board
+                      function setupBoardWrapper() {
+                          if (document.getElementById('ios-board-wrapper')) return;
+                          var board = document.createElement('div');
+                          board.id = 'ios-board-wrapper';
+
+                          var children = Array.from(document.body.childNodes);
+                          for (var i = 0; i < children.length; i++) {
+                              var node = children[i];
+                              if (node.id === 'custom-ios-gold' || node.tagName === 'SCRIPT' || node.tagName === 'STYLE') continue;
+                              board.appendChild(node);
+                          }
+                          document.body.appendChild(board);
+                      }
+
+                      if (document.readyState === 'loading') {
+                          document.addEventListener('DOMContentLoaded', setupBoardWrapper);
+                      } else {
+                          setupBoardWrapper();
+                      }
+
+                      // Inject the Fixed Gold Counter Box directly on body (stays unscaled in top-left)
                       var goldBox = document.createElement('div');
                       goldBox.id = 'custom-ios-gold';
                       goldBox.innerText = 'Gold: 0';
                       document.body.appendChild(goldBox);
 
-                      // Periodically update Gold HUD & brighten any dynamically computed dark-blue text
                       setInterval(function() {
                           if (typeof game !== 'undefined' && game.gold && typeof format === 'function') {
                               goldBox.innerText = 'Gold: ' + format(game.gold);
                           }
                       }, 100);
 
-                      // Also scan stylesheets/elements once loaded to replace any class-based dark blue text
                       function brightenBlueText() {
                           var elements = document.querySelectorAll('.window-body span, .window-body p, .window-body div, .window-body b, .window-body button');
                           for (var i = 0; i < elements.length; i++) {
                               var el = elements[i];
                               var c = window.getComputedStyle(el).color;
-                              // Match pure blue or dark blue (R < 40, G < 70, B > 120)
                               var m = c.match(/rgb\\((\\d+),\\s*(\\d+),\\s*(\\d+)\\)/);
                               if (m) {
                                   var r = parseInt(m[1], 10), g = parseInt(m[2], 10), b = parseInt(m[3], 10);
@@ -225,7 +255,25 @@ jobs:
                           }
                       }
 
-                      // Top-Right Double-Tap Detector for Home
+                      // Camera Controller: Scales #ios-board-wrapper as one solid unit so window layout never warps
+                      var currentScale = 1.0;
+                      var startDist = 0, startScale = 1.0;
+                      var isPanning = false, lastX = 0, lastY = 0, accumDX = 0, accumDY = 0;
+
+                      function applyBoardScale(scale) {
+                          currentScale = Math.min(Math.max(scale, 0.35), 2.5);
+                          var finalScale = (0.88 * currentScale).toFixed(3);
+                          var board = document.getElementById('ios-board-wrapper');
+                          if (board) {
+                              board.style.setProperty('transform', 'scale(' + finalScale + ')', 'important');
+                          }
+                      }
+
+                      function getTouchDist(t1, t2) {
+                          return Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+                      }
+
+                      // Top-Right Double-Tap Detector: Centers camera at (0,0) AND resets board zoom scale to default (1.0x)
                       var lastTopRightTapTime = 0;
                       document.addEventListener('touchend', function(e) {
                           var touch = e.changedTouches && e.changedTouches[0];
@@ -243,33 +291,13 @@ jobs:
                                   }
                                   if (typeof xPos !== 'undefined') xPos = 0;
                                   if (typeof yPos !== 'undefined') yPos = 0;
+                                  applyBoardScale(1.0);
                                   lastTopRightTapTime = 0;
                                   return;
                               }
                               lastTopRightTapTime = now;
                           }
                       }, { passive: true });
-
-                      // Camera Controller (Pinch to zoom + 1-finger pan using CSS zoom so windows stay locked together)
-                      var currentScale = 1.0;
-                      var startDist = 0, startScale = 1.0;
-                      var isPanning = false, lastX = 0, lastY = 0, accumDX = 0, accumDY = 0;
-
-                      function applyWindowScale(scale) {
-                          currentScale = Math.min(Math.max(scale, 0.45), 2.2);
-                          var zoomVal = (0.88 * currentScale).toFixed(3);
-                          var dynStyle = document.getElementById('dynamic-window-zoom');
-                          if (!dynStyle) {
-                              dynStyle = document.createElement('style');
-                              dynStyle.id = 'dynamic-window-zoom';
-                              document.head.appendChild(dynStyle);
-                          }
-                          dynStyle.textContent = '.window { zoom: ' + zoomVal + ' !important; transform: none !important; }';
-                      }
-
-                      function getTouchDist(t1, t2) {
-                          return Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-                      }
 
                       document.addEventListener('touchstart', function(e) {
                           if (e.touches.length === 2) {
@@ -292,16 +320,17 @@ jobs:
 
                       document.addEventListener('touchmove', function(e) {
                           if (e.touches.length === 2 && startDist > 0) {
-                              applyWindowScale(startScale * (getTouchDist(e.touches[0], e.touches[1]) / startDist));
+                              applyBoardScale(startScale * (getTouchDist(e.touches[0], e.touches[1]) / startDist));
                           } else if (isPanning && e.touches.length === 1) {
                               var dx = e.touches[0].clientX - lastX;
                               var dy = e.touches[0].clientY - lastY;
                               lastX = e.touches[0].clientX;
                               lastY = e.touches[0].clientY;
 
+                              var effectiveScale = 0.88 * currentScale;
                               if (typeof xPos !== 'undefined' && typeof yPos !== 'undefined') {
-                                  xPos -= dx / currentScale;
-                                  yPos -= dy / currentScale;
+                                  xPos -= dx / effectiveScale;
+                                  yPos -= dy / effectiveScale;
                               } else if (typeof posMove === 'function') {
                                   accumDX += dx;
                                   accumDY += dy;
@@ -320,6 +349,7 @@ jobs:
                       }, { passive: true });
 
                       window.addEventListener('load', function() {
+                          setupBoardWrapper();
                           applyStartingResources(false);
                           brightenBlueText();
                           if (typeof window.reset === 'function') {
@@ -387,93 +417,4 @@ jobs:
                   topViewController()?.present(alert, animated: true)
               }
 
-              func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
-                  let alert = UIAlertController(title: prompt, message: nil, preferredStyle: .alert)
-                  alert.addTextField { tf in tf.text = defaultText; tf.placeholder = "Paste save data..." }
-                  alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(nil) })
-                  alert.addAction(UIAlertAction(title: "Import", style: .default) { _ in completionHandler(alert.textFields?.first?.text) })
-                  topViewController()?.present(alert, animated: true)
-              }
-          }
-
-          UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil, NSStringFromClass(AppDelegate.self))
-          EOF
-
-          # 2. Compile directly with Swiftc
-          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-          xcrun --sdk iphoneos swiftc \
-            -target arm64-apple-ios15.0 \
-            -sdk "$SDK_PATH" \
-            -O \
-            -o "$APP_DIR/DodecaDragons" \
-            main.swift
-
-          # 3. Write Info.plist
-          cat << 'EOF' > "$APP_DIR/Info.plist"
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleExecutable</key>
-              <string>DodecaDragons</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.demonin.dodecadragons</string>
-              <key>CFBundleName</key>
-              <string>DodecaDragons</string>
-              <key>CFBundlePackageType</key>
-              <string>APPL</string>
-              <key>CFBundleShortVersionString</key>
-              <string>1.1.1</string>
-              <key>CFBundleVersion</key>
-              <string>12</string>
-              <key>LSRequiresIPhoneOS</key>
-              <true/>
-              <key>UIDeviceFamily</key>
-              <array><integer>1</integer><integer>2</integer></array>
-              <key>UILaunchScreen</key><dict/>
-              <key>UIRequiredDeviceCapabilities</key><array><string>arm64</string></array>
-              <key>UIRequiresFullScreen</key><true/>
-              <key>UIStatusBarHidden</key><true/>
-              <key>UIViewControllerBasedStatusBarAppearance</key><true/>
-              <key>UISupportedInterfaceOrientations</key>
-              <array>
-                  <string>UIInterfaceOrientationPortrait</string>
-                  <string>UIInterfaceOrientationLandscapeLeft</string>
-                  <string>UIInterfaceOrientationLandscapeRight</string>
-              </array>
-          </dict>
-          </plist>
-          EOF
-
-          # 4. Sign binary
-          brew install dpkg ldid
-          ldid -S "$APP_DIR/DodecaDragons"
-
-          # 5. Package as .deb
-          mkdir -p deb_root/DEBIAN deb_root/Applications
-          cp -r "$APP_DIR" deb_root/Applications/
-          cat << 'EOF' > deb_root/DEBIAN/control
-          Package: com.demonin.dodecadragons
-          Name: DodecaDragons
-          Version: 1.1.1
-          Architecture: iphoneos-arm64
-          Description: DodecaDragons native iOS port - Connected Zoom & Legible Blue Text
-          Maintainer: Demonin
-          Author: Demonin
-          Section: Games
-          EOF
-          chmod 755 deb_root/DEBIAN
-          dpkg-deb -Zxz --build deb_root DodecaDragons_1.1.1_iphoneos-arm64.deb
-
-          # 6. Package as .ipa
-          mkdir -p Payload
-          cp -r "$APP_DIR" Payload/
-          zip -r9 DodecaDragons.ipa Payload
-
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: DodecaDragons-Builds
-          path: |
-            DodecaDragons_1.1.1_iphoneos-arm64.deb
-            DodecaDragons.ipa
+              func webView(_ webView
